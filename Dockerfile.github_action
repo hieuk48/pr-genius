@@ -13,6 +13,12 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends git && \
     rm -rf /var/lib/apt/lists/*
 
+# Security: drop root — Action container processes untrusted PR data (title/body/diff_stat).
+# Audit C.1: was running as root, which is fine in GH Actions (per-step isolation) but
+# every Python dep in the env becomes a path to root if it has a CVE. Match the main
+# `Dockerfile` (which already does this correctly).
+RUN groupadd -r prgenius && useradd -r -g prgenius prgenius
+
 WORKDIR /app
 
 # Install prgenius-core from PyPI
@@ -31,5 +37,8 @@ RUN chmod +x /entrypoint.sh
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
     CMD python3 -m prgenius --version || exit 1
+
+# Security: never run as root. Audit C.1 finding.
+USER prgenius
 
 ENTRYPOINT ["/entrypoint.sh"]

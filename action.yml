@@ -66,7 +66,11 @@ runs:
       # 钉到主版本：补丁/次版本自动更新，大版本不会被静默拉进来。
       # 完全不钉（`pip install prgenius-core`）意味着一次 breaking release
       # 会直接进到所有用这个 Action 的 CI 里。
-      run: pip install "prgenius-core>=2.0,<3.0"
+      # Audit C.1 finding: 浮钉 `>=2.0,<3.0` 让一个 2.99 breaking release
+      # 在 publish 当天静默传到所有消费者. 上限收紧到 `<2.99` 强制要求
+      # 维护者显式 bump 大版本才能跨这条线. Breaking 政策写在
+      # SECURITY.md (audit C.5 #5).
+      run: pip install "prgenius-core>=2.0,<2.99"
 
     - name: Run PR Genius
       id: analysis

@@ -34,6 +34,9 @@ from prgenius.parser import (
     parse_frontmatter,
     profile_get,
     schema_info,
+    extract_frontmatter_text,
+    FrontmatterTooLarge,
+    MAX_FRONTMATTER_BYTES,
 )
 from prgenius import __version__
 
@@ -154,6 +157,26 @@ class TestCliSmoke(unittest.TestCase):
         self.assertEqual(result.returncode, 0,
                          f"stderr={result.stderr!r}")
         self.assertIn(__version__, result.stdout)
+
+    def test_frontmatter_size_limit(self):
+        # Audit C.1 #3: a hostile 10 MB frontmatter (YAML bomb) used to be
+        # held in memory by `read_text` + the regex. Now bounded at
+        # MAX_FRONTMATTER_BYTES, raising FrontmatterTooLarge loudly.
+        # 1. just under the limit — works.
+        ok = "---\n" + ("x" * (MAX_FRONTMATTER_BYTES - 1)) + "\n---\n"
+        out = extract_frontmatter_text(ok)
+        self.assertIsNotNone(out)
+        self.assertEqual(len(out), MAX_FRONTMATTER_BYTES - 1)
+        # 2. just over the limit — raises, not silently truncates.
+        big = "---\n" + ("x" * (MAX_FRONTMATTER_BYTES + 1)) + "\n---\n"
+        with self.assertRaises(FrontmatterTooLarge) as ctx:
+            extract_frontmatter_text(big)
+        self.assertIn(str(MAX_FRONTMATTER_BYTES), str(ctx.exception))
+        # 3. real frontmatter in this repo is well under the limit
+        #    (anti-patterns/ai-generated-content.md is the largest at ~620 B).
+        real_text = (Path(__file__).resolve().parents[2] /
+                     "anti-patterns" / "ai-generated-content.md").read_text()
+        self.assertIsNotNone(extract_frontmatter_text(real_text))
 
 
 if __name__ == "__main__":

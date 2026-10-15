@@ -22,15 +22,43 @@ from typing import Iterator
 
 _FM_RE = re.compile(r"^---\n(.*?)\n---", re.DOTALL)
 
+# Audit C.1 #3: bound frontmatter size. A 10 MB `description: |` block (audit
+# threat model C.2) would otherwise hold the whole file in memory. 64 KiB is
+# 100x larger than the largest real frontmatter in this repo (anti-patterns/
+# ai-generated-content.md at ~620 B) but small enough that the largest
+# plausible hostile input still fits in a single read. Files that exceed the
+# limit are rejected loudly, not silently truncated.
+MAX_FRONTMATTER_BYTES = 65536
+
+
+class FrontmatterTooLarge(ValueError):
+    """Raised when frontmatter text exceeds MAX_FRONTMATTER_BYTES.
+
+    Surfaced through ``load()`` / ``extract_frontmatter_text()`` so callers
+    (cli, mcp, evaluator) can decide whether to fail or skip.
+    """
+
 
 def extract_frontmatter_text(text: str) -> str | None:
     """Extract raw frontmatter text between --- delimiters.
 
     Returns the inner YAML text, or None if no frontmatter found.
     Handles both ``---\\n...\\n---`` and ``---\\r?\\n...\\r?\\n---``.
+
+    Raises ``FrontmatterTooLarge`` if the inner text exceeds
+    ``MAX_FRONTMATTER_BYTES`` (audit C.1 #3 — defense against a hostile
+    YAML bomb that holds the whole file in memory).
     """
     m = _FM_RE.match(text)
-    return m.group(1) if m else None
+    if not m:
+        return None
+    inner = m.group(1)
+    if len(inner.encode("utf-8")) > MAX_FRONTMATTER_BYTES:
+        raise FrontmatterTooLarge(
+            f"frontmatter is {len(inner)} chars, exceeds limit "
+            f"of {MAX_FRONTMATTER_BYTES} bytes — refusing to parse"
+        )
+    return inner
 
 
 

@@ -116,8 +116,7 @@ def main() -> int:
 
     # 1. README headline pattern count
     matched = False
-    for pat in ALLOWED_PATTERNS_HEADLINES_HEADLINES if False else ALLOWED_PATTERNS_HEADLINES:
-        # (the `if False else` above is a no-op; keep the list-name readable)
+    for pat in ALLOWED_PATTERNS_HEADLINES:
         m = pat.search(readme)
         if m:
             matched = True

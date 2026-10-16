@@ -16,6 +16,36 @@ author: zsxh1990
 
 ---
 
+## 与 PR-Agent / CodeRabbit 的区别
+
+pr-genius 是**纯规则的提交前顾问**：无 LLM、无 API key、分析过程零网络调用。
+`analyze` / `coach` / `triage` / `contributor` / `maintainer` 只读本仓库的本地知识库
+（仓画像、anti-patterns、case studies），不会把你的代码发到任何地方。
+（会访问 GitHub API 的命令是
+`status` / `auto-ping` / `auto-rebase` / `update-issue` / `harvest` —— 它们读写的是
+PR *元数据*，不用模型分析代码。）
+
+PR-Agent（[qodo-ai/pr-agent](https://github.com/qodo-ai/pr-agent)）是
+**AI 代码审查 agent**：需要 LLM API key，在*已经打开的* PR 上执行
+`/review`、`/improve`、`/describe` 等命令。CodeRabbit、Greptile 是同类商业工具
+—— 具体能力以它们的官网为准。
+
+**pr-genius 不读你的 diff 正文。** `analyze_pr` / `coach_pr` 只接收 title、body、
+repo、labels 和可选的 `diff_stat` 摘要（`git diff --stat` 的输出）。PR 大小判定
+只来自该摘要的行数/文件数（没有 `diff_stat` 时退化为标题关键词），diff 正文
+（hunks）从不解析。想要可复现、可审计、不上云的提交前建议 → 用 pr-genius；
+想要对已打开 PR 的 diff 给自然语言评论 → 用 PR-Agent（或同类工具）。
+
+| 使用场景 | PR-Agent / CodeRabbit（LLM 审查 bot） | pr-genius |
+|---|---|---|
+| "我该不该向 org/repo 提这个 PR？" | 不干这个 —— 它们作用于已打开的 PR | ✅ `analyze` / `coach` |
+| "审查这个已打开 PR 的 diff hunks" | ✅ 这是它们的本职 | ❌ 从不分析 diff 正文 |
+| "我有个停滞的出向 PR，该怎么办？" | 不覆盖 —— 见它们的文档 | ✅ `status` / `status_prs` |
+| "我要 LLM 自然语言审查" | ✅（需要 LLM API key） | ❌ 无 LLM、无 API key |
+| "合规环境禁止调用 LLM API" | 需要 LLM API key | ✅ 分析只读本地文件 |
+
+---
+
 ## 🛡️ 为什么用 pr-genius
 
 **pr-genius 不是"会写 PR 的 AI"，而是"知道什么 PR 会被关的顾问"。**

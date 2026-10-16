@@ -11,6 +11,7 @@ default_branch: master
 zsxh_pr_count: 0
 status: auto-generated
 analyzed_at: 2026-07-17
+needs_reverify: true   # 分析已超期，尚未复验 —— 不刷新 analyzed_at 来消音
 data_source: GitHub API + 30-PR sample
 agent_guidelines:
   allow_unsolicited_pr: false

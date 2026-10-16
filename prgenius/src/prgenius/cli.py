@@ -213,7 +213,15 @@ def cmd_coach(args) -> int:
         size_icon = {"XS": "🔹", "S": "🔸", "M": "🔶", "L": "🟠", "XL": "🔴"}.get(pr_size, "⚪")
         risk_icon = {"low": "🟢", "medium": "🟡", "high": "🔴"}.get(risk_level, "⚪")
 
-        print(f"{size_icon} PR 大小: {pr_size} ({pr_size_label})")
+        # issue #109 (cheap half): pr_size is computed from the diff_stat summary
+        # counts (or from title keywords when no diff_stat was given) — the diff
+        # body/hunks are never analyzed. Say so, or readers assume we reviewed
+        # their changes. Keep this disclosure wording; a test locks it.
+        if diff_stat:
+            size_note = " (from diff-stat only — diff content not analyzed)"
+        else:
+            size_note = " (from title keywords only — diff content not analyzed)"
+        print(f"{size_icon} PR 大小: {pr_size} ({pr_size_label}){size_note}")
         print(f"{risk_icon} 影响评分: {impact_score}/100 — {risk_description}\n")
 
         if result["signals"]["negative"]:
@@ -766,6 +774,8 @@ def cmd_contributor_view(args) -> int:
     Mirrors `maintainer`, which has had a CLI entry since v1.5.0 while this one
     shipped MCP-only (issue #106). Note `--diff-stat`: without it the impact and
     review fields are null, and PR size — a real signal — is unavailable.
+    PR size is computed from the diff-stat summary counts only; the diff body
+    (hunks) is never analyzed (issue #109).
     """
     from .contributor_view import contributor_view
 
@@ -1085,7 +1095,8 @@ def main(argv: list[str] | None = None) -> int:
     an.add_argument("--mergeable", default="MERGEABLE", choices=MERGEABLE_STATES,
                     help="合并状态 (MERGEABLE/CONFLICTING/UNKNOWN)")
     an.add_argument("--diff-stat", default="",
-                    help="git diff --stat 输出 (填充 impact/review 并作为 PR 大小权威信号)")
+                    help="git diff --stat 输出 (填充 impact/review 并作为 PR 大小权威信号；"
+                         "仅统计行数/文件数，不分析 diff 正文)")
     an.add_argument("--format", "-f", choices=["text", "json"], default="text", help="输出格式")
     an.set_defaults(func=cmd_analyze)
 
@@ -1114,7 +1125,8 @@ def main(argv: list[str] | None = None) -> int:
     ch.add_argument("--repo-merge-rate", type=_rate01, default=0.0, help="仓库 merge 率 (0.0-1.0)")
     ch.add_argument("--author-association", default="NONE", choices=AUTHOR_ASSOCIATIONS, help="作者身份")
     ch.add_argument("--mergeable", default="MERGEABLE", choices=MERGEABLE_STATES, help="合并状态 (MERGEABLE/CONFLICTING/UNKNOWN)")
-    ch.add_argument("--diff-stat", default="", help="git diff --stat 输出 (用于 impact 评估)")
+    ch.add_argument("--diff-stat", default="",
+                    help="git diff --stat 输出 (用于 impact 评估；仅统计行数/文件数，不分析 diff 正文)")
     ch.add_argument("--format", "-f", choices=["text", "json"], default="text", help="输出格式")
     ch.set_defaults(func=cmd_coach)
 
@@ -1124,7 +1136,8 @@ def main(argv: list[str] | None = None) -> int:
     tr.add_argument("--repo", "-r", required=True, help="目标仓库 (org/repo)")
     tr.add_argument("--body", "-b", default="", help="PR body")
     tr.add_argument("--body-file", default="", help="从文件读取 PR body")
-    tr.add_argument("--diff-stat", default="", help="git diff --stat 输出")
+    tr.add_argument("--diff-stat", default="",
+                    help="git diff --stat 输出 (仅统计行数/文件数，不分析 diff 正文)")
     tr.add_argument("--format", "-f", choices=["text", "json"], default="text", help="输出格式")
     tr.set_defaults(func=cmd_triage)
 
@@ -1307,7 +1320,8 @@ def main(argv: list[str] | None = None) -> int:
             "Mirrors `maintainer`. Reuses analyze_pr signals, maps to 5 contributor actions.\n"
             "read-only / advisory-only — never opens, edits, or comments on anything.\n"
             "Pass --diff-stat (git diff --stat output): without it impact/review are null\n"
-            "and PR size — a real signal — is unavailable."
+            "and PR size — a real signal — is unavailable. PR size comes from the diff-stat\n"
+            "summary only; diff content (hunks) is never analyzed."
         ),
         epilog=(
             "Examples:\n"
@@ -1325,7 +1339,9 @@ def main(argv: list[str] | None = None) -> int:
     cv.add_argument("--author-association", default="NONE", help="Author association")
     cv.add_argument("--star-count", type=int, default=0, help="Repo star count")
     cv.add_argument("--repo-merge-rate", type=float, default=0.0, help="Repo merge rate 0-1")
-    cv.add_argument("--diff-stat", default="", help="git diff --stat output (populates impact/review + PR size)")
+    cv.add_argument("--diff-stat", default="",
+                    help="git diff --stat output (populates impact/review + PR size; "
+                         "summary counts only — diff content not analyzed)")
     cv.add_argument("--format", "-f", choices=["text", "json"], default="text", help="Output format")
     cv.set_defaults(func=cmd_contributor_view)
 

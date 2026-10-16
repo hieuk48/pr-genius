@@ -4,7 +4,9 @@ Answers the "why is my analyze returning nothing?" questions in one shot:
 
 - Python / package version
 - knowledge-base readability (anti-patterns, success-patterns, profiles,
-  case studies, policies) and the repo_root actually resolved
+  case studies, policies) and the repo_root actually resolved; when the
+  reference-only success-patterns corpus is absent it says so instead of
+  printing a bare 0
 - gh CLI availability
 - MCP server surface (can the tools register locally)
 - sample analyze against a known profile
@@ -179,12 +181,16 @@ def run_doctor(repo_root: Optional[Path] = None) -> dict:
         # 解析来源。`none` = 没找到知识库，上面这个 root **不是** repo root
         # （wheel 安装时它会落在 site-packages 的上级 lib/ 目录，看着像路径
         # 其实不是）。如实报出来，别让新用户对着一个假路径排查。
+        # `package-data` = wheel 自带的决策语料子集 (issue #116)。
         "repo_root_source": get_repo_root_source(),
         "readable": (root / "anti-patterns").is_dir(),
         "anti_patterns": anti_total,
         "anti_patterns_with_trigger_keywords": anti_with_kw,
         "pr_observations": pr_obs_total,
         "success_patterns": success_total,
+        # success-patterns 是检索/参考语料，不参与评分 (issue #69)。wheel 只带
+        # 决策子集，所以它可能不在；别把「没装」显示成「0 个」含混过去。
+        "success_patterns_installed": (root / "success-patterns").is_dir(),
         "profiles": _count_dirs(root, "profiles"),
         "case_studies": _count_case_studies(root),
         "policies": 0,
@@ -207,13 +213,12 @@ def run_doctor(repo_root: Optional[Path] = None) -> dict:
         elif not root.is_dir():
             warnings.append(f"the knowledge-base path is not a directory: {root}")
         elif kb["repo_root_source"] == "none":
-            # wheel 只装代码，知识库在仓库里 —— 新用户从 PyPI 装完就是这个状态。
+            # 找不到语料 —— 通常是 wheel 没带 data/（旧构建），或用户指错了路径。
             warnings.append(
-                "knowledge base not found — the `prgenius-core` wheel ships code only, "
-                "the corpus lives in the git repo. Clone it and point at it: "
+                "knowledge base not found near the package — point at a pr-genius checkout: "
                 "`python3 -m prgenius --repo-root <clone> doctor` "
                 "(or export PRGENIUS_REPO_ROOT=<clone>). "
-                f"Looked near {root} (that path is not a repo root, just where the package is installed)"
+                f"Looked near {root} (that path is not a knowledge root, just where the package is installed)"
             )
         else:
             warnings.append(f"knowledge base not readable at {root} (anti-patterns/ missing)")
@@ -234,6 +239,20 @@ def run_doctor(repo_root: Optional[Path] = None) -> dict:
     if success_total > 0:
         warnings.append(
             f"{success_total}/{success_total} success-patterns are not consulted by the scorer"
+        )
+    elif kb["readable"] and not kb["success_patterns_installed"]:
+        # 如实报「没装」，并给出能拿到它的路径 —— 0 不等于「装了但一个都没有」。
+        from .utils import find_reference_bundles
+
+        fuller = [str(p) for p in find_reference_bundles() if str(p) != str(root)]
+        hint = ""
+        if fuller:
+            hint = f" — a fuller bundle is at {fuller[0]} (export PRGENIUS_REPO_ROOT={fuller[0]} to use it)"
+        warnings.append(
+            "success-patterns: not installed — reference-only corpus (search/lookup), "
+            "never consulted by the scorer. To get it, point PRGENIUS_REPO_ROOT at a "
+            "pr-genius checkout or at the npm package's node_modules/pr-genius"
+            + hint
         )
 
     gh = _check_gh()
@@ -266,14 +285,19 @@ def format_doctor_text(report: dict) -> str:
     mcp_info = report.get("mcp", {})
     sample = report.get("sample", {})
 
+    if kb.get("success_patterns_installed", True):
+        success_part = f"{kb.get('success_patterns')} success-patterns"
+    else:
+        success_part = "success-patterns: not installed"
+
     lines = [
         f"prgenius {report.get('prgenius_version')}",
         f"python:      {report.get('python_version')} ({report.get('python_executable')})",
         f"platform:    {report.get('platform')}",
-        f"repo_root:   {kb.get('repo_root')}",
+        f"repo_root:   {kb.get('repo_root')} ({kb.get('repo_root_source')})",
         f"knowledge:   {'readable' if kb.get('readable') else 'NOT READABLE'} — "
         f"{kb.get('anti_patterns')} anti-patterns, "
-        f"{kb.get('success_patterns')} success-patterns, "
+        f"{success_part}, "
         f"{kb.get('profiles')} profiles, "
         f"{kb.get('case_studies')} case studies, "
         f"{kb.get('policies')} policies",

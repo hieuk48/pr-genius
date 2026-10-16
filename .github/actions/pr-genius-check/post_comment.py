@@ -1,20 +1,28 @@
 #!/usr/bin/env python3
-"""Post (or update) a full PR Genius analysis as a visible PR comment.
+"""Post (or update) a PR Genius analysis as a visible PR comment.
 
-Mirrors pr-agent's /review behavior: the complete analysis (tier, signals,
-checklist, anti-patterns, repo context) is rendered to Markdown and posted as
-an issue comment on the PR page. Existing comments from the same bot carrying
-the marker are updated in place so repeated syncs do not spam the thread.
+Two renderers, selected by --comment-format (issue #111):
+
+* ``compact`` (default) — a short bullet summary: risk tier, item counts and a
+  link to the action run that holds the full analysis. Deliberately tiny so
+  the comment is not scrolled past.
+* ``verbose`` — the complete analysis (tier, signals, checklist, anti-patterns,
+  repo context), unchanged from before the ``comment_format`` input existed.
+
+Existing comments from the same bot carrying the marker are updated in place
+so repeated syncs do not spam the thread.
 
 Usage (from the composite action):
     echo "$RESULT" | python3 post_comment.py \
         --repo OWNER/NAME --pr-number N --token "$GH_TOKEN" \
+        [--comment-format compact|verbose] [--run-url URL] \
         [--marker "<!-- pr-genius:report -->"]
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import urllib.request
 
@@ -126,6 +134,92 @@ def render_comment(result: dict) -> str:
     return "\n".join(lines)
 
 
+# ------------------------------------------------------------------
+# Compact renderer (issue #111). render_comment above is the verbose
+# renderer and must stay byte-identical — it is the regression boundary.
+# ------------------------------------------------------------------
+
+VALID_COMMENT_FORMATS = ("compact", "verbose")
+
+
+def resolve_comment_format(raw: str | None) -> tuple[str, bool]:
+    """Normalize the ``comment_format`` input.
+
+    Returns ``(fmt, warned)``. Unknown values fall back to ``compact`` and set
+    ``warned=True`` so the caller can emit a ``::warning::`` annotation.
+
+    Why fall back instead of hard-failing: the comment step is advisory-only
+    everywhere in action.yml (every failure path already downgrades to
+    ``::warning::``), so exiting non-zero over a cosmetic input would break CI
+    against the action's own failure policy. And ``compact`` is both the
+    documented default and the shorter output — a typo must never be the reason
+    a 200-line comment gets posted.
+    """
+    fmt = (raw or "compact").strip().lower()
+    if fmt in VALID_COMMENT_FORMATS:
+        return fmt, False
+    return "compact", True
+
+
+def resolve_run_url(cli_value: str = "") -> str:
+    """URL of the current workflow run, for the compact comment's detail link."""
+    if cli_value:
+        return cli_value
+    server = os.environ.get("GITHUB_SERVER_URL", "")
+    repo = os.environ.get("GITHUB_REPOSITORY", "")
+    run_id = os.environ.get("GITHUB_RUN_ID", "")
+    if server and repo and run_id:
+        return f"{server}/{repo}/actions/runs/{run_id}"
+    return ""
+
+
+def _plural(n: int, word: str) -> str:
+    return f"{n} {word}" if n == 1 else f"{n} {word}s"
+
+
+def render_comment_compact(result: dict, run_url: str = "") -> str:
+    """Render a short bullet summary of the analysis (issue #111).
+
+    Stays far shorter than ``render_comment``: risk tier, item counts, the
+    analyzer's own one-line summary, and a pointer to the action run for the
+    full analysis. The marker is kept so ``post_or_update`` can still upsert.
+    """
+    tier = result.get("tier", "unknown")
+    icon = TIER_ICONS.get(tier, "⚪")
+    label = TIER_LABELS.get(tier, tier)
+    signals = result.get("signals", {}) or {}
+    neg = signals.get("negative") or []
+    pos = signals.get("positive") or []
+    checklist = result.get("checklist") or []
+    anti_detail = result.get("anti_patterns_detail") or []
+    anti_keys = result.get("anti_patterns_hit") or []
+    n_anti = len(anti_detail) if anti_detail else len(anti_keys)
+
+    buckets = (
+        (n_anti, "anti-pattern"),
+        (len(neg), "issue"),
+        (len(checklist), "checklist item"),
+        (len(pos), "positive signal"),
+    )
+    shown = [_plural(n, word) for n, word in buckets if n]
+    counts = " · ".join(shown) if shown else "no findings"
+
+    lines = [f"- {icon} **PR Genius — {label}** — {counts}"]
+    summary = (result.get("summary") or "").strip()
+    if summary:
+        lines.append(f"- {summary}")
+
+    if run_url:
+        detail = f"Full analysis in the [action run]({run_url})."
+    else:
+        detail = "Full analysis in the action run."
+    lines.append("")
+    lines.append(f"*Non-blocking advisory from PR Genius. {detail}*")
+    lines.append("")
+    lines.append(MARKER)
+    return "\n".join(lines)
+
+
 def post_or_update(repo: str, number: int, token: str, body: str, marker: str = MARKER) -> None:
     """POST the comment, or PATCH the bot's existing comment carrying the marker."""
     base = f"https://api.github.com/repos/{repo}/issues/{number}/comments"
@@ -147,9 +241,30 @@ def main() -> int:
     parser.add_argument("--pr-number", required=True, type=int)
     parser.add_argument("--token", default="")
     parser.add_argument("--marker", default=MARKER)
+    parser.add_argument(
+        "--comment-format",
+        default="compact",
+        help="Comment verbosity: 'compact' (default, short bullet summary) or "
+             "'verbose' (full analysis). Unknown values fall back to compact.",
+    )
+    parser.add_argument(
+        "--run-url",
+        default="",
+        help="Link to the workflow run shown in the compact comment. "
+             "Defaults to this run's URL from GITHUB_* env vars.",
+    )
     args = parser.parse_args()
     result = json.load(sys.stdin)
-    body = render_comment(result)
+    fmt, warned = resolve_comment_format(args.comment_format)
+    if warned:
+        print(
+            f"::warning::Unknown comment_format {args.comment_format!r} — "
+            f"falling back to 'compact'. Use 'compact' or 'verbose'."
+        )
+    if fmt == "verbose":
+        body = render_comment(result)
+    else:
+        body = render_comment_compact(result, resolve_run_url(args.run_url))
     try:
         post_or_update(args.repo, args.pr_number, args.token, body, args.marker)
     except Exception as exc:  # advisory only — never fail the workflow

@@ -37,6 +37,15 @@ inputs:
       comment_on_high_risk is true, otherwise never.
     required: false
     default: ''
+  comment_format:
+    description: >-
+      How much detail the PR comment carries. 'compact' (default) posts a
+      short bullet summary — risk tier, item counts, and a link to the action
+      run for the full analysis. 'verbose' posts the complete analysis
+      (signals, checklist, anti-patterns, repo context).
+      Any unrecognized value falls back to 'compact' with a warning annotation.
+    required: false
+    default: 'compact'
   github_token:
     description: 'GitHub token for label/comment operations'
     required: false
@@ -142,6 +151,8 @@ runs:
         TIER: ${{ steps.analysis.outputs.tier }}
         COMMENT_ON_HIGH_RISK: ${{ inputs.comment_on_high_risk }}
         COMMENT_MODE: ${{ inputs.comment_mode }}
+        COMMENT_FORMAT: ${{ inputs.comment_format }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       run: |
         # Decide whether to comment based on comment_mode; '' keeps legacy
         # behavior (comment_on_high_risk == 'true' acts as high_risk).
@@ -160,5 +171,6 @@ runs:
           exit 0
         fi
         echo "$RESULT" | python3 "${{ github.action_path }}/.github/actions/pr-genius-check/post_comment.py" \
-          --repo "$REPO" --pr-number "$PR_NUMBER" --token "$GH_TOKEN" || \
+          --repo "$REPO" --pr-number "$PR_NUMBER" --token "$GH_TOKEN" \
+          --comment-format "$COMMENT_FORMAT" --run-url "$RUN_URL" || \
           echo "::warning::PR Genius comment step failed (advisory only)"

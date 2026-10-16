@@ -236,6 +236,24 @@ comment (mirrors pr-agent's `/review`):
 > **Legacy**: `comment_on_high_risk: true` is still supported and behaves like
 > `comment_mode: high_risk`.
 
+`comment_format` controls **how long** that comment is (separate from whether it
+is posted):
+
+- `compact` — **default.** A short bullet list: risk tier, the finding counts,
+  the analyzer's one-line summary, and a link to the action run for the full
+  analysis. Typically ~6 lines.
+- `verbose` — the full table: every signal with descriptions and `fix_action`,
+  the whole anti-patterns table, and the full checklist. Can exceed 100 lines.
+
+Any other value falls back to `compact` and emits a `::warning::` on the run —
+a typo must never be a reason to post a 100-line comment.
+
+> **Behavior change in this release.** The default is `compact`, so existing
+> workflows that set `comment_mode` but not `comment_format` will get shorter
+> comments than before. Set `comment_format: verbose` to keep the old output.
+> Long analysis is still available on the run page and in `$GITHUB_STEP_SUMMARY`
+> either way.
+
 ### Version Pins
 
 - **`@v2.1.4`** — Pinned to a specific release tag (for reproducibility)

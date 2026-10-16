@@ -8,7 +8,17 @@ description: Changelog following Keep a Changelog format + GitHub compare links
 
 ## [Unreleased]
 
+> Action comments get shorter by default. The detail never left — it moved to
+> the run page, which is where the compact comment points.
+
 ### Added
+
+- **`comment_format` Action input — `compact` (default) or `verbose`.**
+  `compact` posts a short bullet list: risk tier, the finding counts, the
+  analyzer's one-line summary, and a link to the action run. `verbose` is the
+  previous full table and is unchanged byte for byte (`render_comment` is not
+  touched). Any other value falls back to `compact` and emits a `::warning::`
+  on the run instead of failing.
 
 - **`docs/ADOPTION_DATA.md`** — states plainly that there is no adoption
   telemetry and why, lists what is measured instead (all of it inside this
@@ -18,10 +28,23 @@ description: Changelog following Keep a Changelog format + GitHub compare links
 
 ### Changed
 
+- **Behavior change: comments are now `compact` by default.** Workflows that
+  set `comment_mode` but not `comment_format` will post a much shorter comment
+  than before. Set `comment_format: verbose` to restore the old output. Long
+  analysis stays available on the run page and in `$GITHUB_STEP_SUMMARY`.
+
+  This is the one user-visible default change in this release and it is called
+  out here rather than left to be discovered from shorter comments.
+
 - `SECURITY.md` gains a **Privacy** section (what leaves your machine, and the
   fact that nothing does during analysis) and a **Dependency pinning** section
   that documents the `>=2.0,<2.99` tripwire — the `action.yml` comment has
   pointed at this policy since the pin landed, and it did not exist until now.
+
+### Docs
+
+- README documents `comment_format` next to `comment_mode`, including the
+  default-change note above.
 
 
 ## [2.2.3] - 2026-10-04

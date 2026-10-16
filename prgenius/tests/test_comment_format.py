@@ -421,5 +421,71 @@ class TestMainDispatch(unittest.TestCase):
         self.assertIn("banana", stdout)
 
 
+class TestDefaultIsLocked(unittest.TestCase):
+    """The compact default must be pinned in every place that can flip it.
+
+    `resolve_comment_format(None)` being compact is not enough: the argparse
+    default and `action.yml`'s `inputs.comment_format.default` are what real
+    runs actually see. If either drifts back to verbose, existing users get
+    100-line comments again and nothing would catch it.
+    """
+
+    def test_action_yml_declares_compact_default(self):
+        import re
+
+        text = (Path(__file__).resolve().parents[2] / "action.yml").read_text(
+            encoding="utf-8"
+        )
+        # action.yml's inputs block: `  comment_format:` at 2 spaces, its keys
+        # at 4. The input ends at the next 2-space key.
+        block = re.search(
+            r"^  comment_format:\n(?P<body>(?:^    .+\n|^      .+\n)+)",
+            text,
+            re.M,
+        )
+        self.assertIsNotNone(block, "action.yml must declare a comment_format input")
+        default = re.search(r"^    default:\s*(.+)$", block.group("body"), re.M)
+        self.assertIsNotNone(default, "comment_format must declare a default")
+        self.assertEqual(default.group(1).strip().strip("'\""), "compact")
+
+    def test_argparse_default_is_compact_when_flag_omitted(self):
+        import io
+        import json
+        import sys as _sys
+
+        posted = {}
+        original = pc.post_or_update
+        pc.post_or_update = lambda repo, number, token, body, marker=pc.MARKER: posted.update(
+            body=body
+        )
+        old_argv, old_stdin = _sys.argv, _sys.stdin
+        old_stdout, old_stderr = _sys.stdout, _sys.stderr
+        out, err = io.StringIO(), io.StringIO()
+        try:
+            # NOTE: no --comment-format at all — this is the real default path
+            _sys.argv = [
+                "post_comment.py",
+                "--repo",
+                "org/repo",
+                "--pr-number",
+                "1",
+                "--token",
+                "t",
+            ]
+            _sys.stdin = io.StringIO(json.dumps(_sample_result()))
+            _sys.stdout, _sys.stderr = out, err
+            code = pc.main()
+        finally:
+            _sys.argv, _sys.stdin = old_argv, old_stdin
+            _sys.stdout, _sys.stderr = old_stdout, old_stderr
+            pc.post_or_update = original
+
+        body = posted.get("body", "")
+        self.assertEqual(code, 0)
+        self.assertNotEqual(body, GOLDEN_VERBOSE, "default must not be verbose")
+        self.assertLessEqual(body.count("\n") + 1, 8, "default output is compact-sized")
+        self.assertIn(pc.MARKER, body)
+
+
 if __name__ == "__main__":
     unittest.main()

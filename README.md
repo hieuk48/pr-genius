@@ -54,6 +54,40 @@ PR Genius is also a **DSH (Cordis) plugin** that slots into the DeepSeek Harness
 
 ---
 
+## How this differs from PR-Agent / CodeRabbit
+
+PR Genius is a **rules-only pre-submit advisor**: no LLM, no API key, and no
+network calls while analyzing. `analyze` / `coach` / `triage` / `contributor` /
+`maintainer` read this repo's local knowledge bundle (profiles, anti-patterns,
+case studies) and never send your code anywhere. (Commands that do talk to the
+GitHub API — `status`, `auto-ping`, `auto-rebase`, `update-issue`, `harvest` —
+do so to read or maintain PR *metadata*; none of them analyzes code with a
+model.)
+
+PR-Agent ([qodo-ai/pr-agent](https://github.com/qodo-ai/pr-agent)) is an
+**AI-powered code-review agent**: it needs an LLM API key and runs commands
+like `/review`, `/improve` and `/describe` on an *already-open* PR. CodeRabbit
+and Greptile are commercial tools in the same category — see their sites for
+current details.
+
+**PR Genius does not read your diff.** `analyze_pr` / `coach_pr` accept title,
+body, repo, labels and an optional `diff_stat` summary (the output of
+`git diff --stat`). The PR-size verdict is computed from that summary's
+line/file counts — or from title keywords when no `diff_stat` is given — and
+the diff body (hunks) is never parsed. Use PR Genius for reproducible,
+auditable, no-cloud advice *before* you open a PR; use PR-Agent (or similar)
+when you want natural-language comments on an open PR's diff.
+
+| Use case | PR-Agent / CodeRabbit (LLM review bots) | pr-genius |
+|---|---|---|
+| "Should I open this PR to org/repo?" | not their job — they act on open PRs | ✅ `analyze` / `coach` |
+| "Review this open PR's diff hunks" | ✅ that is what they do | ❌ diff content is never analyzed |
+| "I have a stale outbound PR — what do I do?" | not covered — see their docs | ✅ `status` / `status_prs` |
+| "I want LLM natural-language review" | ✅ (needs an LLM API key) | ❌ no LLM, no API key |
+| "Regulated env that forbids LLM API calls" | needs an LLM API key | ✅ analysis is local files only |
+
+---
+
 ## 🛡️ Why PR Genius?
 
 **PR Genius doesn't write PRs for you. It knows which PRs get closed.**
@@ -301,7 +335,7 @@ Docker (stdio MCP server, built from the root `Dockerfile`): `docker build -t pr
 - **`repo`** (required for most tools): Repository in `owner/name` format, e.g. `"encode/httpx"`
 - **`pr_description`** (optional): Additional PR body text for deeper analysis
 - **`query`** (required for `search_patterns`): Search keywords, e.g. `"connection timeout"`
-- **`diff_stat`** (optional for `analyze_pr`, `coach_pr`): `git diff --stat` output — populates the `impact`/`review` fields (both are `null` without it) and is the authoritative PR-size signal
+- **`diff_stat`** (optional for `analyze_pr`, `coach_pr`): `git diff --stat` output — populates the `impact`/`review` fields (both are `null` without it) and is the authoritative PR-size signal. Summary counts only: the diff body (hunks) is never analyzed (issue #109)
 - **`star_count`** ≥ 0, **`repo_merge_rate`** in `[0.0, 1.0]`, **`author_association`** in `NONE/CONTRIBUTOR/COLLABORATOR/MEMBER/OWNER`, **`mergeable`** in `MERGEABLE/CONFLICTING/UNKNOWN` — invalid values are rejected instead of silently producing meaningless output
 
 ## 🧩 DSH Plugin

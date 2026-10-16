@@ -381,3 +381,80 @@ def test_contributor_checklist_renders_fields_not_dict_repr(capsys):
     assert "{" not in out.split("Checklist:", 1)[1].split("Confidence:", 1)[0], \
         "checklist must not render as a Python dict"
     assert "DEGRADED" in out, "a degraded merge estimate must say so"
+
+
+# ---------------------------------------------------------------------------
+# 8. pr_size wording honesty (issue #108 + #109 cheap half)
+# ---------------------------------------------------------------------------
+
+
+def _coach_result(**overrides):
+    """Minimal analyze_pr result shape for cmd_coach human-readable output."""
+    base = {
+        "tier": "low_risk",
+        "repo": "org/repo",
+        "signals": {"positive": [], "negative": [], "neutral": []},
+        "checklist": [],
+        "pr_size": "M",
+        "pr_size_label": "中等 (240 行, 3 文件)",
+        "impact_score": 40,
+        "risk_level": "medium",
+        "risk_description": "中等影响",
+    }
+    base.update(overrides)
+    return base
+
+
+@patch("prgenius.cli.analyze_pr")
+def test_coach_pr_size_wording_discloses_diff_stat_only(mock_analyze, capsys):
+    """issue #109 cheap half: with --diff-stat, the size line must say the diff
+    content is not analyzed.
+
+    pr_size comes from the diff_stat summary counts only; wording that implies
+    the diff was reviewed is exactly the failure mode issue #109 describes.
+    These phrases are locked on purpose — do not drop them.
+    """
+    mock_analyze.return_value = _coach_result()
+    rc = main([
+        "coach", "feat: x", "--repo", "org/repo",
+        "--diff-stat", "3 files changed, 240 insertions(+)",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "PR 大小: M" in out
+    assert "from diff-stat only" in out
+    assert "diff content not analyzed" in out
+
+
+@patch("prgenius.cli.analyze_pr")
+def test_coach_pr_size_wording_without_diff_stat(mock_analyze, capsys):
+    """Without --diff-stat the verdict comes from title keywords — the wording
+    must say that too (issue #109 cheap half)."""
+    mock_analyze.return_value = _coach_result(pr_size="S", pr_size_label="小 (50-150 行)")
+    rc = main(["coach", "fix: typo", "--repo", "org/repo"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "PR 大小: S" in out
+    assert "from title keywords only" in out
+    assert "diff content not analyzed" in out
+
+
+def test_readme_discloses_rules_only_and_diff_blind_positioning():
+    """issue #108: both READMEs must disclose the positioning before the
+    comparison table, and issue #109's honesty wording must stay in the docs."""
+    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    assert "How this differs from PR-Agent / CodeRabbit" in readme
+    assert "rules-only pre-submit advisor" in readme
+    assert "does not read your diff" in readme
+    assert "diff content is never analyzed" in readme
+    assert "no LLM, no API key" in readme
+    # the section must sit before the LLM comparison table
+    assert readme.index("How this differs from PR-Agent / CodeRabbit") < \
+        readme.index("| Capability | LLM directly |")
+
+    zh = (REPO_ROOT / "README.zh-CN.md").read_text(encoding="utf-8")
+    assert "与 PR-Agent / CodeRabbit 的区别" in zh
+    assert "纯规则的提交前顾问" in zh
+    assert "不读你的 diff" in zh
+    assert "从不分析 diff 正文" in zh
+    assert zh.index("与 PR-Agent / CodeRabbit 的区别") < zh.index("| 能力 | 大模型直接提 PR |")

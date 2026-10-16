@@ -129,7 +129,9 @@ def _load_tools(repo_root: Path | None = None):
             repo_merge_rate: Repository's external PR merge rate 0.0-1.0 (0 = unknown)
             mergeable: Mergeable state (MERGEABLE/CONFLICTING/UNKNOWN)
             diff_stat: git diff --stat output — populates impact/review and is
-                the authoritative PR-size signal (null when omitted)
+                the authoritative PR-size signal (null when omitted). Summary
+                counts only: PR size is derived from these counts (or title
+                keywords when omitted); the diff body/hunks are never analyzed.
 
         Returns:
             dict with keys: tier, signals, checklist, recommended_action, repo,
@@ -195,7 +197,8 @@ def _load_tools(repo_root: Path | None = None):
             star_count: Repo star count (>= 0)
             repo_merge_rate: External PR merge rate (0.0-1.0)
             mergeable: Mergeable state (MERGEABLE/CONFLICTING/UNKNOWN)
-            diff_stat: git diff --stat output (populates impact/review)
+            diff_stat: git diff --stat output (populates impact/review; summary
+                counts only — diff content/hunks are never analyzed)
 
         Returns:
             dict with pass (bool), tier, signals, checklist, recommended_action
@@ -533,7 +536,8 @@ def _load_tools(repo_root: Path | None = None):
             labels: PR labels
             star_count: Repo star count
             repo_merge_rate: External PR merge rate 0.0-1.0
-            diff_stat: Diff stat string (e.g. "3 files changed, 10 insertions(+), 5 deletions(-)")
+            diff_stat: Diff stat string (e.g. "3 files changed, 10 insertions(+), 5 deletions(-)");
+                summary counts only — diff content/hunks are never analyzed
 
         Returns:
             dict with keys: persona, repo, title, author, action, reason,
@@ -584,7 +588,8 @@ def _load_tools(repo_root: Path | None = None):
             labels: PR labels
             star_count: Repo star count
             repo_merge_rate: External PR merge rate 0.0-1.0
-            diff_stat: Diff stat string
+            diff_stat: Diff stat string (summary counts only — diff content/hunks
+                are never analyzed)
 
         Returns:
             dict with keys: persona, repo, title, author, action, action_label,

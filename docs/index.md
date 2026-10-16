@@ -30,7 +30,8 @@ this, you can use it to plan your next retrieval step.
 | `CONTRIBUTING.md` | How to contribute (profile/lesson/PR/AI-assisted) | - |
 | `CODE_OF_CONDUCT.md` | Conduct rules | - |
 | `LICENSE` | MIT | - |
-| `SECURITY.md` | Coordinated disclosure | - |
+| `SECURITY.md` | Coordinated disclosure + privacy / dependency pinning | - |
+| `docs/ADOPTION_DATA.md` | What we measure, what we do not, why there is no telemetry | - |
 | `DISCUSSIONS.md` | Discussions categories (until enabled) | - |
 | `README.zh.md` | Chinese README mirror | - |
 | `validate.py` | Validator (frontmatter / links / consistency / rounds) | - |

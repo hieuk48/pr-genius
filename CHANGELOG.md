@@ -6,6 +6,24 @@ description: Changelog following Keep a Changelog format + GitHub compare links
 # Changelog
 
 
+## [Unreleased]
+
+### Added
+
+- **`docs/ADOPTION_DATA.md`** — states plainly that there is no adoption
+  telemetry and why, lists what is measured instead (all of it inside this
+  repository, all of it re-runnable), and separates that from what is genuinely
+  unknown. Linked from the README's corpus count so the pattern/repo number is
+  not mistaken for a usage number. Closes the documentation half of #110.
+
+### Changed
+
+- `SECURITY.md` gains a **Privacy** section (what leaves your machine, and the
+  fact that nothing does during analysis) and a **Dependency pinning** section
+  that documents the `>=2.0,<2.99` tripwire — the `action.yml` comment has
+  pointed at this policy since the pin landed, and it did not exist until now.
+
+
 ## [2.2.3] - 2026-10-04
 
 > Harvest was writing "failure" into records of PRs that merged cleanly.

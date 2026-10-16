@@ -22,15 +22,57 @@ from typing import Iterator
 
 _FM_RE = re.compile(r"^---\n(.*?)\n---", re.DOTALL)
 
+# Audit C.1 #3: bound frontmatter size. A 10 MB `description: |` block (audit
+# threat model C.2) would otherwise hold the whole file in memory. 64 KiB is
+# 100x larger than the largest real frontmatter in this repo (anti-patterns/
+# ai-generated-content.md at ~620 B) but small enough that the largest
+# plausible hostile input still fits in a single read. Files that exceed the
+# limit are rejected loudly, not silently truncated.
+MAX_FRONTMATTER_BYTES = 65536
+
+
+class FrontmatterTooLarge(ValueError):
+    """Raised when frontmatter text exceeds MAX_FRONTMATTER_BYTES.
+
+    Raised by every entry point that materialises frontmatter text —
+    ``extract_frontmatter_text()`` and ``load()`` — so callers (cli, mcp,
+    evaluator) can decide whether to fail or skip. ``evaluator``'s corpus
+    loaders already catch ``Exception`` and skip the file with a warning;
+    ``load()`` propagates to its caller.
+    """
+
+
+def _reject_oversized_frontmatter(inner: str) -> None:
+    """Enforce MAX_FRONTMATTER_BYTES on raw frontmatter text.
+
+    The limit is in **bytes** (that is what has to fit in memory); the
+    message quotes both numbers so a non-ASCII frontmatter is not misread
+    as a limit on characters.
+    """
+    n_bytes = len(inner.encode("utf-8"))
+    if n_bytes > MAX_FRONTMATTER_BYTES:
+        raise FrontmatterTooLarge(
+            f"frontmatter is {n_bytes} bytes ({len(inner)} chars), exceeds "
+            f"limit of {MAX_FRONTMATTER_BYTES} bytes — refusing to parse"
+        )
+
 
 def extract_frontmatter_text(text: str) -> str | None:
     """Extract raw frontmatter text between --- delimiters.
 
     Returns the inner YAML text, or None if no frontmatter found.
     Handles both ``---\\n...\\n---`` and ``---\\r?\\n...\\r?\\n---``.
+
+    Raises ``FrontmatterTooLarge`` if the inner text exceeds
+    ``MAX_FRONTMATTER_BYTES`` (audit C.1 #3 — defense against a hostile
+    YAML bomb that holds the whole file in memory).
     """
     m = _FM_RE.match(text)
-    return m.group(1) if m else None
+    if not m:
+        return None
+    inner = m.group(1)
+    _reject_oversized_frontmatter(inner)
+    return inner
 
 
 
@@ -114,13 +156,20 @@ def _parse_simple_frontmatter(text: str) -> dict:
 
 
 def load(path: str | Path) -> dict:
-    """Load a markdown file: return {frontmatter, body, path}."""
+    """Load a markdown file: return {frontmatter, body, path}.
+
+    Raises ``FrontmatterTooLarge`` when the frontmatter exceeds
+    ``MAX_FRONTMATTER_BYTES``, matching ``extract_frontmatter_text()``.
+    The whole file is still read — ``body`` is part of the return value —
+    so this bounds the *parse* cost of a YAML bomb, not the read itself.
+    """
     p = Path(path)
     text = p.read_text(encoding="utf-8")
     fm_match = _FM_RE.match(text)
     if not fm_match:
         return {"frontmatter": {}, "body": text, "path": str(p)}
     fm_text = fm_match.group(1)
+    _reject_oversized_frontmatter(fm_text)
     body = text[fm_match.end():].lstrip("\n")
     return {
         "frontmatter": parse_frontmatter(fm_text),

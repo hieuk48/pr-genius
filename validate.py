@@ -521,6 +521,10 @@ def find_md_files(root: Path) -> list[Path]:
         "site-packages",
         "dist",
         "build",
+        # audit scratch dir — the OpenCodeReview audit report is not a
+        # knowledge bundle entry; treating it as one would emit a false
+        # `missing type field` error.
+        ".audit",
     }
     return sorted(
         p for p in root.rglob("*.md")

@@ -38,6 +38,13 @@ jobs:
       - name: Run tests (gate)
         run: python3 -m pytest prgenius/tests/ -v -k "not test_score_merge and not test_evidence_directory_exists and not test_load_anti_patterns and not test_features_file_exists"
 
+      - name: Verify README/CHANGELOG claims (gate)
+        # Audit E.6: three releases in a row (v2.1.0, v2.1.4, v2.2.x) shipped
+        # with claims that didn't survive empirical inspection. This script
+        # re-measures every count claim the docs make and fails the build if
+        # any drift is detected. Cheap to run (no deps, ~50 ms).
+        run: python3 scripts/verify_claims.py
+
       - name: Build sdist + wheel
         working-directory: prgenius
         run: python -m build

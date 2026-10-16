@@ -43,6 +43,33 @@ We aim to acknowledge within 72 hours and triage within 7 days.
   in `*-<repo>/index.md`. Report those to the upstream project, not here.
 - **In scope**: content of this repo only.
 
+## Privacy: what leaves your machine
+
+**Nothing during analysis.** `analyze_pr`, `coach_pr`, `triage_pr`,
+`contributor_view` and `maintainer_view` read the local knowledge bundle and
+return a verdict. No LLM call, no API key, no outbound request.
+
+Commands that do talk to GitHub (`status`, `auto-ping`, `auto-rebase`,
+`update-issue`, `harvest`) fetch PR **metadata** through the API using a token
+you supply. They are not part of analysis.
+
+**There is no adoption telemetry.** We do not collect install counts, tool
+invocation counts, or whether advice was adopted. `docs/ADOPTION_DATA.md`
+lists what is measured instead (all of it inside this repository) and why we
+chose not to build the instrument that would produce usage numbers.
+
+If telemetry is ever added it will be **off by default**, announced in
+`CHANGELOG.md`, and documented here first.
+
+## Dependency pinning
+
+`action.yml` installs `prgenius-core` with an explicit upper bound
+(`>=2.0,<2.99`) rather than an open range. The bound is a **tripwire, not a
+semver boundary**: crossing it requires a deliberate edit to `action.yml`, so a
+breaking release cannot reach Action consumers on publish day without someone
+looking at it. Bumping the bound is part of the release checklist, not
+something dependabot does.
+
 ## Disclosure Timeline
 
 1. **T+0** — private report received

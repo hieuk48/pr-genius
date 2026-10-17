@@ -59,6 +59,7 @@ misakanet_queries:
 misakanet_lessons: []
 federation_status: declared-2026-07-03
 agent_guidelines_evidence:
+  merge_rate_30d_all: https://github.com/NousResearch/hermes-agent/pulls?q=is%3Apr+is%3Aclosed
   allow_unsolicited_pr: https://github.com/NousResearch/hermes-agent/blob/main/CONTRIBUTING.md
   require_issue_first: https://github.com/NousResearch/hermes-agent/blob/main/CONTRIBUTING.md
   ai_policy: https://github.com/NousResearch/hermes-agent/blob/main/CONTRIBUTING.md

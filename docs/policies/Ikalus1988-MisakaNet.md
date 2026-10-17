@@ -3,6 +3,7 @@ type: Maintainer Policy
 repo: Ikalus1988/MisakaNet
 created: 2026-07-18
 updated: 2026-07-18
+needs_reverify: true   # 分析已超期，尚未复验 —— 不刷新 updated 来消音
 anchors: [491, 492, 493, 494, 495, 496, 497]
 ---
 

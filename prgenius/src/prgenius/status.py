@@ -15,7 +15,7 @@ import os
 import re
 import subprocess
 from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Optional
@@ -24,9 +24,16 @@ from .parser import profile_get
 
 DEFAULT_STALE_DAYS = 14
 
-# Strict filename match: YYYY-MM-DD.json only (excludes test fixtures like
-# "2026-08-02-graphql.json" that share the prefix but are not real snapshots).
-_SNAPSHOT_NAME = re.compile(r"^\d{4}-\d{2}-\d{2}\.json$")
+# Strict filename match for real snapshots: `YYYY-MM-DD.json` (legacy daily
+# name) or `YYYY-MM-DD-HHMM.json` (written by _save_snapshot so multiple runs
+# per day do not overwrite each other). Test fixtures like
+# "2026-08-02-graphql.json" share the date prefix but must never be selected.
+_SNAPSHOT_NAME = re.compile(r"^\d{4}-\d{2}-\d{2}(?:-\d{4})?\.json$")
+
+# Unchanged state is re-recorded at most once per interval, so that turning
+# recording on by default (CLI + MCP) does not flood the directory when a
+# caller polls. Status *changes* are always recorded immediately.
+_SNAPSHOT_HEARTBEAT_HOURS = 24
 
 
 class PRStatus(str, Enum):
@@ -121,6 +128,18 @@ class PRStatusResult:
     abandon_candidate: bool = False
     ping_suggested: bool = False
     rebase_suggested: bool = False
+
+
+def _as_plain_dict(result: "PRStatusResult") -> dict:
+    """asdict() with `status` as a plain str.
+
+    PRStatus is a str-Enum: asdict keeps the member, `json.dumps` renders its
+    value, but an f-string renders `PRStatus.NEEDS_REBASE`. Downstream output
+    (table, transitions, auto-ping) formats these fields, so normalise here.
+    """
+    data = asdict(result)
+    data["status"] = result.status.value
+    return data
 
 
 def _read_token() -> Optional[str]:
@@ -669,20 +688,51 @@ _TRANSITION_ACTIONS = {
 }
 
 
+def _snapshot_sort_key(name: str) -> Optional[tuple]:
+    """Parse a snapshot filename into (year, month, day, minutes) for ordering.
+
+    `YYYY-MM-DD.json` (legacy) sorts as 00:00 of that day; `YYYY-MM-DD-HHMM.json`
+    sorts at its own minute, so a timestamped run beats the same day's daily
+    file. Returns None for anything that is not a valid snapshot name.
+    """
+    if not _SNAPSHOT_NAME.match(name):
+        return None
+    stem = name[: -len(".json")]
+    if len(stem) == 10:
+        day, minutes = stem, 0
+    else:
+        day, hhmm = stem[:-5], stem[-4:]
+        minutes = int(hhmm[:2]) * 60 + int(hhmm[2:])
+    try:
+        y, mo, d = (int(x) for x in day.split("-"))
+        date(y, mo, d)  # reject 2026-13-45-style names the regex allows
+    except ValueError:
+        return None
+    return (y, mo, d, minutes)
+
+
 def _find_latest_snapshot(snapshot_dir: Path) -> Optional[Path]:
     """Find the most recent snapshot file in the directory.
 
-    Strict match on `YYYY-MM-DD.json` so test fixtures like
+    Strict match on the snapshot filename shape so test fixtures like
     `2026-08-02-graphql.json` (which share the date prefix) are not
-    silently selected as the latest real snapshot.
+    silently selected as the latest real snapshot. Ordering is chronological
+    (parsed date + HHMM), not lexicographic.
+
+    Round-trip note: `_save_snapshot` writes `YYYY-MM-DD-HHMM.json`, so this
+    reader must accept that shape too — otherwise the engine writes snapshots
+    it can never read back and every run diffs against a stale file forever.
     """
-    pattern = str(snapshot_dir / "*.json")
-    files = sorted(glob.glob(pattern), reverse=True)
-    for f in files:
-        name = Path(f).name
-        if _SNAPSHOT_NAME.match(name):
-            return Path(f)
-    return None
+    best: Optional[Path] = None
+    best_key: Optional[tuple] = None
+    for f in glob.glob(str(snapshot_dir / "*.json")):
+        path = Path(f)
+        key = _snapshot_sort_key(path.name)
+        if key is None:
+            continue
+        if best_key is None or key > best_key:
+            best, best_key = path, key
+    return best
 
 
 def _load_previous_snapshot(snapshot_dir: Path) -> Optional[dict]:
@@ -704,7 +754,13 @@ def _build_pr_key(pr: dict) -> str:
 def _compute_transitions(current: dict, previous: Optional[dict]) -> list[dict]:
     """Compare current vs previous snapshot, return transition list.
 
-    Each transition: {repo, number, title, previous_status, current_status, changed, alert}
+    Each transition: {repo, number, title, previous_status, current_status,
+    changed, alert} plus status_since / days_in_status copied from the current
+    PR entry when present (see _enrich_history).
+
+    With no previous snapshot there is nothing to diff against, so this returns
+    [] — the caller reports that run as a baseline ("first record") instead of
+    inventing a history.
     """
     if not previous:
         return []
@@ -722,7 +778,7 @@ def _compute_transitions(current: dict, previous: Optional[dict]) -> list[dict]:
 
         if not prev:
             # New PR (wasn't in previous snapshot)
-            transitions.append({
+            entry = {
                 "repo": pr["repo"],
                 "number": pr["number"],
                 "title": pr["title"],
@@ -730,7 +786,9 @@ def _compute_transitions(current: dict, previous: Optional[dict]) -> list[dict]:
                 "current_status": pr["status"],
                 "changed": True,
                 "alert": False,
-            })
+            }
+            _copy_history(pr, entry)
+            transitions.append(entry)
             continue
 
         prev_status = prev.get("status")
@@ -751,6 +809,7 @@ def _compute_transitions(current: dict, previous: Optional[dict]) -> list[dict]:
         }
         if severity:
             entry["severity"] = severity
+        _copy_history(pr, entry)
         transitions.append(entry)
 
     # Check for PRs that disappeared (merged/closed)
@@ -770,17 +829,128 @@ def _compute_transitions(current: dict, previous: Optional[dict]) -> list[dict]:
     return transitions
 
 
-def _save_snapshot(result: dict, snapshot_dir: Path) -> Path:
+def _copy_history(pr: dict, entry: dict) -> None:
+    """Copy history fields from a (possibly enriched) PR entry to a transition."""
+    for field_name in ("status_since", "days_in_status", "status_before"):
+        if field_name in pr:
+            entry[field_name] = pr[field_name]
+
+
+def _days_between(start: str, end: str) -> int:
+    """Whole days from a YYYY-MM-DD date string to another, never negative."""
+    try:
+        s = date.fromisoformat(str(start)[:10])
+        e = date.fromisoformat(str(end)[:10])
+    except (ValueError, TypeError):
+        return 0
+    return max(0, (e - s).days)
+
+
+def _enrich_history(result: dict, previous: Optional[dict]) -> None:
+    """Attach status_since / days_in_status / previous_status / status_before
+    to each PR entry.
+
+    History is read from the previous local snapshot only — never invented:
+
+    - status unchanged → inherit `status_since` and `status_before` from the
+      previous entry. A legacy snapshot without those fields falls back to its
+      own `checked_at` date as the earliest date we can prove the status held,
+      and admits no "was X" claim.
+    - status changed → `status_since` is today (day one of the current status)
+      and `status_before` is the status just left.
+    - no previous snapshot at all → `previous_status` stays None and the run is
+      reported as a baseline; nothing claims a duration it cannot prove.
+    """
+    today = (result.get("checked_at") or datetime.now(timezone.utc).isoformat())[:10]
+    prev_lookup: dict[str, dict] = {}
+    prev_checked_at = ""
+    if previous:
+        prev_checked_at = (previous.get("checked_at") or "")[:10]
+        for pr in previous.get("prs", []):
+            prev_lookup[_build_pr_key(pr)] = pr
+
+    for pr in result.get("prs", []):
+        prev = prev_lookup.get(_build_pr_key(pr))
+        prev_status = prev.get("status") if prev else None
+        pr["previous_status"] = prev_status
+        if prev and prev_status == pr.get("status"):
+            pr["status_since"] = (
+                prev.get("status_since") or prev_checked_at or today
+            )
+            pr["status_before"] = prev.get("status_before")
+        else:
+            pr["status_since"] = today
+            pr["status_before"] = prev_status
+        pr["days_in_status"] = _days_between(pr["status_since"], today)
+
+
+def describe_history(pr: dict, baseline: bool = False) -> str:
+    """One-line history for a PR: "STALE_NO_REVIEW for 5d, was NEEDS_REBASE".
+
+    Honest about what is unknown: with no previous snapshot the answer is
+    "first record", never a fabricated duration. "changed today" is only
+    claimed when a status_before transition is actually on record.
+    """
+    status = pr.get("status", "")
+    since = pr.get("status_since")
+    days = pr.get("days_in_status")
+    if since is None:
+        return ""
+    if pr.get("previous_status") is None:
+        return "first record" if baseline else "new"
+    before = pr.get("status_before")
+    if before and before != status:
+        if not days:
+            return f"{status} (changed today), was {before}"
+        return f"{status} for {days}d, was {before}"
+    return f"{status} for {days}d" if days else f"{status} since today"
+
+
+def _status_map(snapshot: dict) -> dict:
+    """(repo#number → status) for every PR a snapshot saw, ignored ones included."""
+    mapping = {}
+    for pr in snapshot.get("prs", []):
+        mapping[_build_pr_key(pr)] = pr.get("status")
+    for pr in snapshot.get("ignored", []):
+        mapping[_build_pr_key(pr)] = "IGNORED"
+    return mapping
+
+
+def _should_write_snapshot(result: dict, previous: Optional[dict]) -> bool:
+    """Decide whether this run's state deserves its own snapshot file.
+
+    The dashboard's memory is the *transition* history, so a snapshot is
+    written when the state changes (or when there is none yet), and otherwise
+    at most once per `_SNAPSHOT_HEARTBEAT_HOURS` so "last recorded" stays
+    fresh without a file per poll.
+    """
+    if not previous:
+        return True
+    if _status_map(result) != _status_map(previous):
+        return True
+    prev_checked = _parse_datetime(previous.get("checked_at", ""))
+    if not prev_checked:
+        return True
+    return (datetime.now(timezone.utc) - prev_checked) >= timedelta(
+        hours=_SNAPSHOT_HEARTBEAT_HOURS
+    )
+
+
+def _snapshot_filename_now() -> str:
+    """Snapshot filename for the current minute: `YYYY-MM-DD-HHMM.json`."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d-%H%M") + ".json"
+
+
+def _save_snapshot(result: dict, snapshot_dir: Path, filename: Optional[str] = None) -> Path:
     """Save current result as a snapshot file.
 
     Filename is `YYYY-MM-DD-HHMM.json` so multiple runs per day do not
     overwrite each other; transition detection then has historical data
-    to diff against instead of only "today's last run".
+    to diff against instead of only "today's last run". Readers must accept
+    this shape — see `_SNAPSHOT_NAME`.
     """
     snapshot_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H%M")
-    filename = f"{timestamp}.json"
-    path = snapshot_dir / filename
+    path = snapshot_dir / (filename or _snapshot_filename_now())
     path.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
     return path
 
@@ -790,13 +960,21 @@ def check_status(
     repo: Optional[str] = None,
     stale_days: Optional[int] = None,
     repo_root: Optional[Path] = None,
-    save_snapshot: bool = False,
+    save_snapshot: bool = True,
     snapshot_dir: Optional[Path] = None,
 ) -> dict:
     """Main entry point: fetch PRs, classify, return structured result.
 
     Priority: CLI stale_days > repo profile stale_days_threshold > default 14.
-    If save_snapshot=True, saves result and computes transitions from previous snapshot.
+
+    Recording is on by default: the product is "my outbound PR history × repo
+    profile", and a dashboard without memory is not a dashboard. Every run
+    diffs against the previous local snapshot, reports each PR's status
+    history (or an honest "first record"), and keeps a snapshot so the next
+    run has something real to diff against. `save_snapshot=False` keeps the
+    run read-only (nothing written) but history is still read and reported.
+    Snapshots are written when state changes, and at most daily when it does
+    not — see `_should_write_snapshot`.
     """
     prs = fetch_open_prs(author=author, repo=repo)
 
@@ -870,25 +1048,44 @@ def check_status(
             "stale_days_threshold": effective_stale_days,
             "stale_days_source": pr_stale_days_source,
         },
-        "prs": [asdict(r) for r in classified],
-        "ignored": [asdict(r) for r in ignored],
+        "prs": [_as_plain_dict(r) for r in classified],
+        "ignored": [_as_plain_dict(r) for r in ignored],
         "summary": summary,
         "actions": actions,
     }
 
-    # Snapshot & transition tracking
-    if save_snapshot:
-        if snapshot_dir is None:
-            snapshot_dir = Path("data/status-snapshots")
-        previous = _load_previous_snapshot(snapshot_dir)
-        transitions = _compute_transitions(result, previous)
-        result["transitions"] = transitions
-        result["transition_summary"] = {
-            "total": len(transitions),
-            "changed": sum(1 for t in transitions if t["changed"]),
-            "alerts": sum(1 for t in transitions if t["alert"]),
-        }
-        _save_snapshot(result, snapshot_dir)
+    # Snapshot & transition tracking (write on by default — see docstring).
+    # History is read whether or not this run records: "let history be
+    # readable" does not depend on opting into the write.
+    if snapshot_dir is None:
+        snapshot_dir = Path("data/status-snapshots")
+    previous = _load_previous_snapshot(snapshot_dir)
+    _enrich_history(result, previous)
+    transitions = _compute_transitions(result, previous)
+    result["transitions"] = transitions
+    baseline = previous is None
+    previous_name = _find_latest_snapshot(snapshot_dir).name if previous else None
+    will_write = save_snapshot and _should_write_snapshot(result, previous)
+    result["transition_summary"] = {
+        # True when there was no previous snapshot to compare against: this
+        # run reports a baseline instead of implying a history it cannot prove.
+        "baseline": baseline,
+        "total": len(transitions),
+        "changed": sum(1 for t in transitions if t["changed"]),
+        "alerts": sum(1 for t in transitions if t["alert"]),
+        "previous_snapshot": previous_name,
+        "saved_to": _snapshot_filename_now() if will_write else None,
+    }
+    if will_write:
+        _save_snapshot(
+            result, snapshot_dir, filename=result["transition_summary"]["saved_to"]
+        )
+    elif save_snapshot:
+        result["transition_summary"]["skipped_write"] = (
+            "state unchanged since previous snapshot"
+        )
+    else:
+        result["transition_summary"]["skipped_write"] = "recording disabled"
 
     return result
 
@@ -929,6 +1126,8 @@ def format_table(result: dict) -> str:
 
     prs = result["prs"]
     ignored = result.get("ignored", [])
+    tsum = result.get("transition_summary") or {}
+    baseline = bool(tsum.get("baseline"))
 
     # Group by status
     grouped = {}
@@ -947,6 +1146,9 @@ def format_table(result: dict) -> str:
         lines.append(f"{icon} {label}")
         for pr in grouped[status.value]:
             extra = f" ({pr['days_since_update']}d since update)"
+            history = describe_history(pr, baseline=baseline)
+            if history:
+                extra += f" · {history}"
             lines.append(f"  {pr['repo']} #{pr['number']} — {pr['title']}{extra}")
         lines.append("")
 
@@ -965,6 +1167,18 @@ def format_table(result: dict) -> str:
         if key in summary:
             summary_parts.append(f"{summary[key]} {STATUS_LABELS[status]}")
     lines.append(f"Summary: {', '.join(summary_parts)}")
+
+    # History: say plainly when this is the first record rather than
+    # implying a comparison that did not happen.
+    if baseline:
+        if tsum.get("saved_to"):
+            lines.append(
+                "📸 First record — baseline established, no prior snapshot to "
+                "compare. History starts with this run."
+            )
+        else:
+            lines.append("📸 First record — no prior snapshot to compare.")
+        lines.append("")
 
     # Transitions
     transitions = result.get("transitions", [])

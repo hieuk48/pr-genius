@@ -36,6 +36,25 @@ def _get_repo_root(args) -> Path:
     return REPO_ROOT_DEFAULT
 
 
+def _add_snapshot_args(parser) -> None:
+    """Shared snapshot flags for every subcommand that runs a status check.
+
+    Recording is ON by default: the product is "my outbound PR history × repo
+    profile", so a run that does not remember anything is a hole in the
+    dashboard's memory. `--no-save-snapshot` is the explicit opt-out.
+    """
+    parser.add_argument(
+        "--save-snapshot",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Persist the result under data/status-snapshots/ and diff it "
+            "against the previous snapshot (default: on; "
+            "--no-save-snapshot to skip recording)"
+        ),
+    )
+
+
 # ============================================================
 # 输入校验 (issue #72): argparse type callables — 拒绝不可能的取值,
 # 让 typo 在进入分析前就报错, 而不是产出语义无意义的结果。
@@ -491,7 +510,13 @@ def cmd_doctor(args) -> int:
     from .doctor import run_doctor, format_doctor_text
 
     repo_root = _get_repo_root(args)
-    report = run_doctor(repo_root)
+    # Tell doctor where the path came from. An explicit --repo-root must not be
+    # labelled with module self-resolution's verdict — that is how a working
+    # checkout ends up printed as "(none)".
+    report = run_doctor(
+        repo_root,
+        repo_root_source="arg" if args.repo_root else None,
+    )
 
     if args.format == "json":
         print(json.dumps(report, indent=2, ensure_ascii=False))
@@ -579,7 +604,10 @@ def cmd_profile_writeback(args) -> int:
 
     repo_root = _get_repo_root(args)
     try:
-        result = check_status(author=args.author, repo_root=repo_root, save_snapshot=False)
+        result = check_status(
+            author=args.author, repo_root=repo_root,
+            save_snapshot=args.save_snapshot,
+        )
     except RuntimeError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
@@ -644,7 +672,10 @@ def cmd_auto_ping(args) -> int:
 
     repo_root = _get_repo_root(args)
     try:
-        result = check_status(author=args.author, repo_root=repo_root, save_snapshot=False)
+        result = check_status(
+            author=args.author, repo_root=repo_root,
+            save_snapshot=args.save_snapshot,
+        )
     except RuntimeError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
@@ -712,7 +743,10 @@ def cmd_auto_rebase(args) -> int:
 
     repo_root = _get_repo_root(args)
     try:
-        result = check_status(author=args.author, repo_root=repo_root, save_snapshot=False)
+        result = check_status(
+            author=args.author, repo_root=repo_root,
+            save_snapshot=args.save_snapshot,
+        )
     except RuntimeError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
@@ -1184,6 +1218,7 @@ def main(argv: list[str] | None = None) -> int:
     pw.add_argument("--author", required=True, help="GitHub username")
     pw.add_argument("--mode", choices=["suggest", "auto"], default="suggest", help="Writeback mode")
     pw.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
+    _add_snapshot_args(pw)
     pw.add_argument("--repo-root", help="Path to pr-genius repo root")
     pw.set_defaults(func=cmd_profile_writeback)
 
@@ -1208,14 +1243,16 @@ def main(argv: list[str] | None = None) -> int:
             "Scan open PRs for an author or repo and classify each by health "
             "status (9 categories: NEEDS_REBASE / CI_FAILING / STALE_REVIEW / "
             "CHANGES_REQUESTED / STALE_NO_REVIEW / BLOCKED / CLEAN / UNKNOWN / "
-            "WAITING). Optional --save-snapshot records results and detects "
-            "transitions (e.g. WAITING -> NEEDS_REBASE) against the previous run."
+            "WAITING). Records a snapshot by default and detects transitions "
+            "(e.g. WAITING -> NEEDS_REBASE) against the previous run; use "
+            "--no-save-snapshot to skip recording."
         ),
         epilog=(
             "Examples:\n"
             "  prgenius status --author zsxh1990\n"
             "  prgenius status --repo Ikalus1988/MisakaNet --stale-days 7\n"
-            "  prgenius status --author zsxh1990 --save-snapshot --alert-only\n"
+            "  prgenius status --author zsxh1990 --alert-only\n"
+            "  prgenius status --author zsxh1990 --no-save-snapshot\n"
             "  prgenius status --author zsxh1990 --writeback-mode suggest\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1226,8 +1263,7 @@ def main(argv: list[str] | None = None) -> int:
                     help="Days without update to consider stale (priority: CLI > profile > default 14)")
     st.add_argument("--format", choices=["table", "json"], default="table",
                     help="Output format (default: table)")
-    st.add_argument("--save-snapshot", action="store_true",
-                    help="Persist result to data/status-snapshots/ and diff against previous snapshot")
+    _add_snapshot_args(st)
     st.add_argument("--snapshot-dir",
                     help="Directory for snapshots (default: data/status-snapshots)")
     st.add_argument("--writeback-mode", choices=["off", "suggest", "auto"], default="off",
@@ -1249,7 +1285,7 @@ def main(argv: list[str] | None = None) -> int:
     ui.add_argument("--author", help="GitHub username to check PRs for")
     ui.add_argument("--repo", help="Repository to check PRs in (org/repo)")
     ui.add_argument("--stale-days", type=int, default=None, help="Stale days threshold")
-    ui.add_argument("--save-snapshot", action="store_true", help="Save snapshot")
+    _add_snapshot_args(ui)
     ui.add_argument("--snapshot-dir", help="Directory for snapshots")
     ui.add_argument("--issue-repo", required=True, help="Repo containing the issue (org/repo)")
     ui.add_argument("--issue-number", required=True, type=int, help="Issue number to update")
@@ -1262,6 +1298,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--author", required=True, help="GitHub username")
     ap.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
     ap.add_argument("--confirm", action="store_true", help="Actually post ping comments (default: dry-run)")
+    _add_snapshot_args(ap)
     ap.add_argument("--repo-root", help="Path to pr-genius repo root")
     ap.set_defaults(func=cmd_auto_ping)
 
@@ -1270,6 +1307,7 @@ def main(argv: list[str] | None = None) -> int:
     ar.add_argument("--author", required=True, help="GitHub username")
     ar.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
     ar.add_argument("--confirm", action="store_true", help="Actually attempt rebases via GitHub API (default: dry-run)")
+    _add_snapshot_args(ar)
     ar.add_argument("--repo-root", help="Path to pr-genius repo root")
     ar.set_defaults(func=cmd_auto_rebase)
 

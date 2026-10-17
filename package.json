@@ -78,6 +78,8 @@
     "react-dom": ">=18"
   },
   "dependencies": {
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "schemastery": "^3.18.0"
   },
   "devDependencies": {

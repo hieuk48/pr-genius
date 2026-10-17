@@ -17,7 +17,14 @@ require:
      package's ``dsh.bundle`` pointer;
   5. the engineering toolchain is present at the benchmark's level
      (strict tsconfig, a test runner, a bundler, a linter, i18n in its own
-     directory).
+     directory);
+  6. the published bundle is self-sufficient: every bare specifier the built
+     ``dist/*.mjs`` actually imports must be a node builtin, an
+     ``@deepseek-ai/*`` host package (DSH's runtime resolution supplies those),
+     or a package declared in ``dependencies`` (issue #117 — ``react`` was
+     peer-only, DSH never supplies it, so ``import("pr-genius")`` died with
+     ERR_MODULE_NOT_FOUND before ``apply()``). Plus the DSH peer-dev pairing:
+     every ``peerDependencies`` name also appears in ``devDependencies``.
 
 Exit 0 when every blocking check passes. Exit 1 otherwise, listing what is
 missing. Warnings do not fail the run.
@@ -217,6 +224,84 @@ if entry:
             f"{len(cjk)} CJK literal(s) inline in the entry — move them to locale/ so "
             "the EN/zh surface stays one source"
         )
+
+# ── 4c. Runtime import surface (issue #117) ─────────────────────────────
+
+# 判据来自真机探针，不是猜的：DSH 的 runtime resolution（dsh-app-boot 的
+# collectInstallationScopePackages）在 npm 与 pnpm 两种安装布局下都只供
+# @deepseek-ai/*，**从不提供 react**；dsh plugin add 走 pnpm，也不会把
+# peerDependencies 装进 profile。所以产物运行时 import 的裸包名必须能在
+# 插件自己的安装树里解析 —— 即写进 dependencies —— 或者是宿主保供的
+# @deepseek-ai/*。缺一个就是 #117：import 阶段 ERR_MODULE_NOT_FOUND，
+# loader 只报一句 "failed to import"，apply() 根本跑不到。
+IMPORT_RE = re.compile(
+    r"""(?:from|import|require)\s*\(?\s*["']([^"']+)["']"""
+)
+BARE_PACKAGE_RE = re.compile(r"^(@[^/]+/[^/]+|[^/@][^/]*)")
+
+
+def iter_import_specs(text: str) -> set[str]:
+    """Bare/relative module specifiers in ESM/CJS import positions.
+
+    Excludes method calls like ``Array.from("…")`` / ``m.require("…")`` by
+    rejecting a ``.`` (or word char) immediately before the keyword.
+    """
+    specs: set[str] = set()
+    for m in IMPORT_RE.finditer(text):
+        prev = text[m.start() - 1] if m.start() else ""
+        if prev in (".", "$", "_") or prev.isalnum():
+            continue
+        specs.add(m.group(1))
+    return specs
+
+
+def bare_package(spec: str) -> str | None:
+    """Package name of a bare specifier; None for relative/absolute/node: paths."""
+    if spec.startswith((".", "/", "node:", "data:", "file:")):
+        return None
+    m = BARE_PACKAGE_RE.match(spec)
+    return m.group(1) if m else None
+
+
+if pkg_path.is_file():
+    deps = set((pkg.get("dependencies") or {}).keys())
+    peers = pkg.get("peerDependencies") or {}
+    peer_names = set(peers.keys())
+    dev_names = set((pkg.get("devDependencies") or {}).keys())
+
+    # (a) DSH peer-dev rule: shared-instance peers also carry a devDependency
+    #     copy for typecheck/tests (the pairing dsh-context and the harness
+    #     packages use).
+    unpaired = sorted(peer_names - dev_names)
+    ok(not unpaired, f"every peerDependency also has a devDependency ({', '.join(sorted(peer_names)) or 'none'})")
+    if unpaired:
+        warn(f"peerDependencies without a devDependency twin: {unpaired}")
+
+    # (b) built dist must only import what a consumer install + DSH host provide.
+    dist_mjs = sorted((ROOT / "dist").rglob("*.mjs")) if (ROOT / "dist").is_dir() else []
+    if not dist_mjs:
+        warn("dist/ not built — runtime import surface check skipped (run `npm run build` first)")
+    else:
+        specs: set[str] = set()
+        for f in dist_mjs:
+            specs.update(iter_import_specs(f.read_text(encoding="utf-8", errors="replace")))
+        unresolvable = sorted(
+            {
+                s
+                for s in map(bare_package, specs)
+                if s is not None and s not in deps and not s.startswith("@deepseek-ai/")
+            }
+        )
+        ok(
+            not unresolvable,
+            "every dist/*.mjs bare import is a builtin, @deepseek-ai/* host package, "
+            f"or a dependency ({len([s for s in map(bare_package, specs) if s])} specs checked)",
+        )
+        if unresolvable:
+            warn(
+                "imported by dist but not in dependencies (peer-only is not enough: DSH "
+                f"never installs or supplies these) → {unresolvable}"
+            )
 
 # ── report ──────────────────────────────────────────────────────────────
 

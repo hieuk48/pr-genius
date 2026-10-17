@@ -16,30 +16,105 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-_KB_MARKERS = ("anti-patterns", "success-patterns", "profiles")
+# Decision-critical markers: a directory is a knowledge root when it carries
+# these two.  ``success-patterns`` is deliberately **not** a marker (issue
+# #116): the wheel ships the scoring subset without it, and a root without it
+# is still a usable knowledge base — the loader for that corpus degrades to
+# empty and `doctor` reports it as not installed.
+_KB_MARKERS = ("anti-patterns", "profiles")
+
+# The npm/DSH package name whose install tree carries the full corpus.
+_NPM_PACKAGE = "pr-genius"
+
+
+def _is_kb_root(path: Path) -> bool:
+    """True when *path* looks like a pr-genius knowledge root."""
+    return path.is_dir() and all((path / m).is_dir() for m in _KB_MARKERS)
+
+
+def _npm_bundle_roots(here: Path | None = None, cwd: Path | None = None) -> list[Path]:
+    """Find ``node_modules/pr-genius`` knowledge bundles near here / cwd.
+
+    The npm package ships the full corpus (it is what the DSH plugin runs
+    against), so a wheel install can find it one directory up instead of
+    falling back to "no knowledge base".  Walks up from the working directory
+    first (how a plugin invocation is usually reached), then from this module.
+    """
+    here = here or Path(__file__).resolve()
+    cwd = cwd or Path.cwd()
+    seen: set[Path] = set()
+    out: list[Path] = []
+    for base in (cwd, here.parent):
+        try:
+            chain = (base, *base.parents)
+        except OSError:  # pragma: no cover - unresolvable cwd
+            continue
+        for ancestor in chain:
+            cand = (ancestor / "node_modules" / _NPM_PACKAGE).resolve()
+            if cand in seen:
+                continue
+            seen.add(cand)
+            if _is_kb_root(cand):
+                out.append(cand)
+    return out
+
+
+def _iter_kb_candidates(here: Path | None = None, cwd: Path | None = None) -> list[tuple[Path, str]]:
+    """Knowledge roots visible from *here*, in resolution order (env excluded).
+
+    Order, and why:
+      ``found``         a full checkout above the package — the live tree wins.
+      ``package-data``  the corpus bundled into the wheel (issue #116) —
+                        version-matched to the code that imported it.
+      ``npm-node_modules`` the npm package's corpus (DSH installs already have
+                        it; it also carries success-patterns).
+      ``dev-layout``    running from a source checkout that was not caught by
+                        ``found``.
+    """
+    here = here or Path(__file__).resolve()
+    cwd = cwd or Path.cwd()
+    out: list[tuple[Path, str]] = []
+
+    for ancestor in here.parents:
+        if _is_kb_root(ancestor):
+            out.append((ancestor, "found"))
+
+    bundled = here.parent / "data"
+    if _is_kb_root(bundled):
+        out.append((bundled, "package-data"))
+
+    for cand in _npm_bundle_roots(here=here, cwd=cwd):
+        out.append((cand, "npm-node_modules"))
+
+    # Dev layout: prgenius/src/prgenius/utils.py → repo root is parents[3].
+    dev = here.parents[3] if len(here.parents) > 3 else here.parent
+    if dev not in {p for p, _ in out} and _is_kb_root(dev):
+        out.append((dev, "dev-layout"))
+
+    return out
 
 
 def _find_repo_root() -> tuple[Path, str]:
-    """Locate the pr-genius repo root (knowledge bundle parent).
+    """Locate the pr-genius knowledge root (repo root or bundled corpus).
 
     Resolution order:
-      1. ``PRGENIUS_REPO_ROOT`` env-var (explicit override).
-      2. Walk up from this file looking for a directory that contains
-         the knowledge-bundle markers (``anti-patterns/``, etc.).
-      3. Dev-layout shortcut (``prgenius/src/prgenius/utils.py`` → repo root) —
-         **only if that directory really carries the markers**.
+      1. ``PRGENIUS_REPO_ROOT`` env-var (explicit override — trusted even when
+         it does not carry the markers, so a partial tree can be pointed at).
+      2. The first entry of :func:`_iter_kb_candidates` (see that function for
+         the order and the reasoning).
 
     Returns ``(path, source)`` where source is one of ``env`` / ``found`` /
-    ``dev-layout`` / ``none``. ``none`` means no knowledge bundle was located:
-    the returned path is still a real directory, but it is **not** a repo root
-    and callers must say so instead of pretending.
+    ``package-data`` / ``npm-node_modules`` / ``dev-layout`` / ``none``.
+    ``none`` means no knowledge bundle was located: the returned path is still
+    a real directory, but it is **not** a knowledge root and callers must say
+    so instead of pretending.
 
-    Why the dev-layout step is now conditional: for a wheel install
-    (``site-packages/prgenius/utils.py``) ``parents[3]`` evaluates to the
-    environment's ``lib/`` directory. That looks like a plausible path and is
-    not one, so ``prgenius-core doctor`` used to report it as ``repo_root`` and
-    a new user was told their knowledge base was missing "at /…/lib". Check the
-    markers or admit you did not find it.
+    Why anything other than "walk up" has to check the markers: for a wheel
+    install (``site-packages/prgenius/utils.py``) ``parents[3]`` evaluates to
+    the environment's ``lib/`` directory. That looks like a plausible path and
+    is not one, so ``prgenius-core doctor`` used to report it as ``repo_root``
+    and a new user was told their knowledge base was missing "at /…/lib".
+    Check the markers or admit you did not find it.
     """
     # 1. Env-var override
     env = os.environ.get("PRGENIUS_REPO_ROOT")
@@ -48,25 +123,44 @@ def _find_repo_root() -> tuple[Path, str]:
         if p.is_dir():
             return p, "env"
 
-    # 2. Walk up from this file
-    here = Path(__file__).resolve()
-    for ancestor in here.parents:
-        if all((ancestor / m).is_dir() for m in _KB_MARKERS):
-            return ancestor, "found"
+    candidates = _iter_kb_candidates()
+    if candidates:
+        return candidates[0]
 
-    # 3. Dev layout: prgenius/src/prgenius/utils.py → repo root is parents[3].
-    dev = here.parents[3] if len(here.parents) > 3 else here.parent
-    if dev.is_dir() and all((dev / m).is_dir() for m in _KB_MARKERS):
-        return dev, "dev-layout"
-
-    return here.parent, "none"
+    return Path(__file__).resolve().parent, "none"
 
 
 REPO_ROOT, REPO_ROOT_SOURCE = _find_repo_root()
 
 
+def find_reference_bundles(here: Path | None = None, cwd: Path | None = None) -> list[Path]:
+    """Knowledge roots that carry ``success-patterns`` (the reference corpus).
+
+    The wheel ships the decision subset without it (issue #116), so
+    ``prgenius doctor`` uses this to name an actionable upgrade path instead
+    of just reporting the corpus as absent.
+    """
+    roots: list[tuple[Path, str]] = []
+    env = os.environ.get("PRGENIUS_REPO_ROOT")
+    if env:
+        p = Path(env).resolve()
+        if p.is_dir():
+            roots.append((p, "env"))
+    roots.extend(_iter_kb_candidates(here=here, cwd=cwd))
+    out: list[Path] = []
+    seen: set[Path] = set()
+    for path, _source in roots:
+        if path in seen:
+            continue
+        seen.add(path)
+        if (path / "success-patterns").is_dir():
+            out.append(path)
+    return out
+
+
 def get_repo_root_source() -> str:
-    """How the knowledge-base root was resolved: env / found / dev-layout / none.
+    """How the knowledge-base root was resolved: env / found / package-data /
+    npm-node_modules / dev-layout / none.
 
     ``none`` means nothing was found — the path from :func:`get_repo_root` is
     not a knowledge base and should be reported as such.

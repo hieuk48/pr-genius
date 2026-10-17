@@ -41,6 +41,24 @@ description: Changelog following Keep a Changelog format + GitHub compare links
   that documents the `>=2.0,<2.99` tripwire — the `action.yml` comment has
   pointed at this policy since the pin landed, and it did not exist until now.
 
+### Fixed
+
+- **`prgenius-core`'s wheel now ships its memory (issue #116).** The knowledge
+  corpus lived only at the repository root, so `pip install prgenius-core`
+  produced an amnesiac dashboard: `doctor` resolved `repo_root_source: none`
+  and reported 0 anti-patterns, 0 profiles, 0 case studies, 0 policies until
+  someone pointed it at a git clone. The build now bundles the
+  decision-relevant subset (`anti-patterns/`, `profiles/`, `pr-observations/`,
+  `docs/policies/`, `locale/`) as `prgenius/data/`, and root resolution finds
+  it as `package-data` — after `PRGENIUS_REPO_ROOT` and a checkout above the
+  package, before the npm `node_modules/pr-genius` fallback.
+
+  `success-patterns/` (~2.7 MB) is deliberately still not bundled: it is a
+  retrieval/reference corpus the scorer never consults (issue #69), so it
+  would triple the wheel without changing a single decision. `doctor` now
+  reports `success_patterns_installed: false` and names where to get it
+  instead of printing a bare 0.
+
 ### Docs
 
 - README documents `comment_format` next to `comment_mode`, including the

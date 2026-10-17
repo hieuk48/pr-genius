@@ -53,3 +53,8 @@ token.txt
 node_modules/
 dist/
 .claude/
+# 本仓用 pnpm（pnpm-lock.yaml），CI 走 pnpm install --frozen-lockfile。
+# package-lock.json 曾以「自己指向自己」的绝对路径符号链接被提交（mode 120000），
+# 换台机器 clone 就是死链。删掉后 ignore 掉，避免有人 npm install 又提交一份
+# 与 pnpm-lock.yaml 分叉的锁文件。
+package-lock.json

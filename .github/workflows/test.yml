@@ -36,10 +36,11 @@ jobs:
       - name: Run tests
         run: |
           # mcp tests require Python >=3.10
-          # Skip tests requiring local pipeline data (evidence/, features/, predictions/)
-          SKIP="not test_score_merge and not test_evidence_directory_exists and not test_load_anti_patterns and not test_features_file_exists"
+          # 管线产物缺失的那 4 条已改成缺件跳过（见各测试的 docstring），
+          # 不再需要 -k 掩码 —— 掩码顺带把 test_load_anti_patterns 也一起
+          # 屏蔽了 11 条，其中 10 条本来就是好的。
           if python3 -c "import sys; assert sys.version_info >= (3,10)"; then
-            python3 -m pytest prgenius/tests/ -v -k "$SKIP"
+            python3 -m pytest prgenius/tests/ -v
           else
-            python3 -m pytest prgenius/tests/ -v -k "$SKIP and not test_mcp"
+            python3 -m pytest prgenius/tests/ -v -k "not test_mcp"
           fi

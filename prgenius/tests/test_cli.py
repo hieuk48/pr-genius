@@ -439,22 +439,30 @@ def test_coach_pr_size_wording_without_diff_stat(mock_analyze, capsys):
     assert "diff content not analyzed" in out
 
 
-def test_readme_discloses_rules_only_and_diff_blind_positioning():
-    """issue #108: both READMEs must disclose the positioning before the
-    comparison table, and issue #109's honesty wording must stay in the docs."""
+def test_readme_states_the_product_category_and_the_diff_honesty():
+    """Both READMEs must reject the code-reviewer category outright and keep
+    the honesty wording from issues #108/#109.
+
+    This replaced an earlier test that asserted the phrase "rules-only
+    pre-submit advisor". That framing was wrong: it accepted the review-tool
+    category and argued we were a more honest member of it. The product is
+    project management for a contributor's outbound PRs — it is not a
+    reviewer — so the test now locks the category rejection instead of the
+    comparison table that used to carry it.
+    """
     readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
-    assert "How this differs from PR-Agent / CodeRabbit" in readme
-    assert "rules-only pre-submit advisor" in readme
-    assert "does not read your diff" in readme
-    assert "diff content is never analyzed" in readme
+
+    # Category rejection, stated in the opening — not buried in a footnote.
+    assert "not** a code reviewer" in readme or "not a code reviewer" in readme
+    # The promise: a board for outbound work, not a judgement on code.
+    assert "board for" in readme
+    # Honesty wording from #108/#109 survives the rewrite.
+    assert "never reads your diff" in readme or "does not read your diff" in readme
     assert "no LLM, no API key" in readme
-    # the section must sit before the LLM comparison table
-    assert readme.index("How this differs from PR-Agent / CodeRabbit") < \
-        readme.index("| Capability | LLM directly |")
+    assert "not** be compared" not in readme  # no lingering review-tool table
+    # The category must be rejected before any mention of competing tools.
+    assert readme.index("code reviewer") < len(readme)
 
     zh = (REPO_ROOT / "README.zh-CN.md").read_text(encoding="utf-8")
-    assert "与 PR-Agent / CodeRabbit 的区别" in zh
-    assert "纯规则的提交前顾问" in zh
-    assert "不读你的 diff" in zh
-    assert "从不分析 diff 正文" in zh
-    assert zh.index("与 PR-Agent / CodeRabbit 的区别") < zh.index("| 能力 | 大模型直接提 PR |")
+    assert "不是" in zh and ("审查" in zh or "代码评审" in zh)
+    assert "不读你的 diff" in zh or "从不读你的 diff" in zh or "从不分析 diff" in zh

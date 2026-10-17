@@ -77,6 +77,11 @@ observations, 67 repo profiles, 302 reviewed cases. Those are receipts for the
 sentence above, not the point of it — every one of them is verified against the
 live tree on each release by `scripts/verify_claims.py`.
 
+One of those corpora deserves a caveat: `success-patterns/` is
+**retrieval/reference only** and is **not wired into scoring**. It is browsable
+context, not a positive-feedback system, and no verdict has ever been changed
+by it. The 61 anti-patterns are what actually move the risk tier.
+
 ---
 
 ## The nine states are nine decisions

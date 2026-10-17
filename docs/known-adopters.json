@@ -1,0 +1,21 @@
+{
+  "_comment": [
+    "Registry of known pr-genius adopters. Everything here must trace to an",
+    "issue or a named report — see docs/EVIDENCE_BOUNTIES.md.",
+    "",
+    "source: 'testimony'  = the maintainer stated this, no issue link yet.",
+    "                        Counted in the 'unseen' figure, NOT quoted as fact.",
+    "source: 'issue'      = someone filed a usage-evidence issue. Link required.",
+    "source: 'discovered' = found by scripts/discover_action_users.py."
+  ],
+  "testimony": {
+    "stated_on": "2026-10-17",
+    "stated_by": "maintainer",
+    "action_reuse_repos": 5,
+    "users_reporting_before_after": 3,
+    "claim": "The Action is reused by at least 5 external repositories, and at least 3 users have reported that the tool improves AI-submitted PR success rate, measured as before/after test-PR submissions.",
+    "names_unavailable": true,
+    "why_names_matter": "Without repo names and PR links this cannot be quoted anywhere. It is recorded here so the gap is visible, not so the number can be used."
+  },
+  "adopters": {}
+}

@@ -32,6 +32,8 @@ this, you can use it to plan your next retrieval step.
 | `LICENSE` | MIT | - |
 | `SECURITY.md` | Coordinated disclosure + privacy / dependency pinning | - |
 | `docs/ADOPTION_DATA.md` | What we measure, what we do not, why there is no telemetry | - |
+| `docs/EVIDENCE_BOUNTIES.md` | How adoption evidence is solicited — the three bounties | - |
+| `docs/known-adopters.json` | Adopter registry; every entry traces to an issue | - |
 | `DISCUSSIONS.md` | Discussions categories (until enabled) | - |
 | `README.zh.md` | Chinese README mirror | - |
 | `validate.py` | Validator (frontmatter / links / consistency / rounds) | - |

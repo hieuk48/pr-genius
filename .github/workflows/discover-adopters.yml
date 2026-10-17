@@ -1,0 +1,84 @@
+name: discover adopters
+
+# The only passive channel available for "who uses pr-genius".
+#
+# This repo ships no telemetry, so adoption cannot be counted from inside the
+# product. Public code search is also weak — measured 2026-10-17: zero `uses:`
+# hits, so real adopters are invisible to it. This workflow therefore does the
+# one thing that is still possible: look at public data on a schedule, and open
+# an issue if anything new appears.
+#
+# It never files anything when nothing changed. Silence is the normal state and
+# must not become noise.
+
+on:
+  schedule:
+    # Monthly, off the hour to avoid the top-of-hour thundering herd.
+    - cron: '43 6 4 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Run adopter visibility probe
+        id: probe
+        run: |
+          python3 scripts/discover_action_users.py --json > /tmp/probe.json
+          python3 scripts/discover_action_users.py --markdown > /tmp/probe.md
+          {
+            echo 'body<<PROBE_EOF'
+            cat /tmp/probe.md
+            echo 'PROBE_EOF'
+          } >> "$GITHUB_OUTPUT"
+          python3 - <<'PY'
+          import json, os
+          r = json.load(open('/tmp/probe.json'))
+          new = r.get('new_since_last_run') or []
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as fh:
+              fh.write(f"new_count={len(new)}\n")
+              fh.write("new_list=" + ", ".join(new) + "\n")
+          print(f"discovered={r.get('discovered_adopters')}")
+          print(f"unseen={r.get('unseen_floor')} new={new}")
+          PY
+
+      - name: Open an issue only when something new appeared
+        if: steps.probe.outputs.new_count != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --repo zsxh1990/pr-genius \
+            --title "[auto] New adopter(s) visible: ${{ steps.probe.outputs.new_list }}" \
+            --label usage-evidence \
+            --body-file - <<ISSUE_EOF
+          Automated adopter-visibility probe found repositories that were not in
+          docs/known-adopters.json.
+
+          ${{ steps.probe.outputs.body }}
+
+          ---
+
+          This is public-code-search data only. It is **not** a usage count — see
+          docs/EVIDENCE_BOUNTIES.md. Please open a [Usage Evidence](../issues/new/choose)
+          issue on their behalf only if they have said so; do not contact anyone.
+
+          New this run: \`${{ steps.probe.outputs.new_list }}\`
+          ISSUE_EOF
+
+      - name: Record the measurement even when nothing changed
+        if: steps.probe.outputs.new_count == '0'
+        run: |
+          echo "No new visible adopters."
+          echo "This is a statement about search visibility, not about adoption."
+          cat /tmp/probe.md

@@ -5,12 +5,37 @@ description: What PR Genius measures, what it does not, and why there is no adop
 
 # Adoption data: what we know and what we deliberately do not collect
 
-**Short answer: PR Genius has no adoption telemetry. We do not know how many
-people use it, how often any tool is called, or whether our advice was taken.**
+**Short answer: PR Genius has no adoption telemetry. The product cannot tell
+you how many people use it — and neither can we, from inside.**
+
+What we *do* have is testimony and solicited evidence: adopters who tell us,
+in issues. See [EVIDENCE_BOUNTIES.md](EVIDENCE_BOUNTIES.md) for how that works
+and why it is the only mechanism consistent with the privacy promise.
+
+> **A correction.** An earlier version of this page said "we do not know how
+> many people use it." That was wrong, and it is exactly the kind of claim this
+> page exists to prevent. The truth is narrower and more useful: **the product
+> cannot measure adoption, and public code search cannot see our adopters
+> either.** Adoption still exists; it is recorded by people, not by software.
 
 This page exists because the README's corpus counts ("N loaded patterns across
 M repos") can read like a usage claim. It is not one. It is an inventory of
 files in this repository.
+
+## What the visibility measurement says
+
+Run `python3 scripts/discover_action_users.py`. Measured 2026-10-17:
+
+| Channel | Found |
+|---|---|
+| `uses: zsxh1990/pr-genius` | **0** — real Action users are not indexed, or not public |
+| `zsxh1990/pr-genius filename:yml` | 5 raw, 0 adopters |
+| broad search | 50 raw, 14 non-adopter mentions (awesome-lists, doc mirrors) |
+
+Known adopters we **cannot** see: **5**.
+
+That number is the important one. Public search is not a usage count, and this
+project will never present it as one.
 
 ## Why there is no telemetry
 

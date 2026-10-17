@@ -1043,16 +1043,34 @@ def main() -> int:
     if errors:
         return 1
     # In strict mode, only fail on critical warnings (not orphan anti-patterns or profile evidence)
+    #
+    # ⚠️ 后果（2026-10-17）：把新鲜度从 critical 名单里拿掉之后，**当前语料下
+    # 没有任何警告还是 critical**。也就是说 --strict 与不加它只在 `errors` 上
+    # 有区别，警告层面已经等价。这不是疏忽，是上面那个决定的直接结果 ——
+    # 改动前唯一会让 --strict 变红的警告就是新鲜度。
+    # 如果希望 --strict 重新有牙齿，得有人拍板哪一类警告升级为 critical
+    # （例如「无证据的肯定断言」，现在只警告不挡）。在那之前，别把 --strict
+    # 说成比 validate.py 多一道门。
     if "--strict" in sys.argv:
         critical_warnings = [w for w in warnings if not (
             w.startswith("orphan anti-pattern:") or
             "缺 evidence_url" in w or
             "unknown type" in w or
             "differ significantly" in w or
-            # needs_reverify 显式标记的超期 profile/policy: 真实债务已声明在
-            # frontmatter 里 (analyzed_at 不动, 不伪造新鲜度), 警告照印但不挡门。
-            # 未标记的超期警告仍然 critical。
-            "marked needs-reverify" in w or
+            # 新鲜度（check 7）**一律不挡 --strict**，已标记与未标记都只报告。
+            #
+            # 理由（2026-10-17 定）：这条门禁按**日历**变红，不按**内容**变红。
+            # 它测的是「时间过去了」，不是「东西错了」。实测批次：
+            # 10-08 十个、10-14 五个、10-16 十三个、10-18 预告十四个 ——
+            # 四批全是同一件事，手工打标记成了纯劳役，而且画像数还会涨。
+            # 未标记的超期仍然照印（并且措辞与已标记的区分开），它回到
+            # **信号**这个位置；真正该挡门的是内容错误：假数字、断链、
+            # 无证据的肯定断言 —— 那些走 errors，不过这个判定。
+            #
+            # 已标记的措辞是 "... marked needs-reverify (stale analysis retained,
+            # not re-verified)"，未标记的是 "... re-verify"，两者都含
+            # "90d threshold"。用它做签名，两种一起放行。
+            "90d threshold" in w or
             # review-case evidence (check 9): --strict 对证据缺失**一律不挡**
             # （与 check 9 的 docstring 一致：findings 进 warnings, 不挡 --strict）。
             # 执法只在 --enforce-evidence 那一步, 且按方案 G1 分流:

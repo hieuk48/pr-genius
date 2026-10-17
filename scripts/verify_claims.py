@@ -127,7 +127,15 @@ EXPECTED_MCP_TOOLS = {
     "contributor_view", "review_queue", "prgenius_doctor",
 }
 
-EXPECTED_REPO_COUNT = 67
+def _live_repo_profiles() -> int:
+    """Count profiles/ subdirectories — the live number, not a constant.
+
+    A hardcoded expectation is the wrong shape for this check: add a profile
+    and the README silently goes stale while the gate still passes. The
+    README must track the tree, so compare against the tree.
+    """
+    d = REPO_ROOT / "profiles"
+    return sum(1 for p in d.iterdir() if p.is_dir()) if d.is_dir() else 0
 
 
 # --- Verifier -----------------------------------------------------------
@@ -154,10 +162,11 @@ def main() -> int:
                 f"({_live_anti_patterns()[0]} anti + "
                 f"{_live_success_patterns()} success) = {live_patterns}"
             )
-        if claimed.get("repos") and int(claimed["repos"]) != EXPECTED_REPO_COUNT:
+        live_repos = _live_repo_profiles()
+        if claimed.get("repos") and int(claimed["repos"]) != live_repos:
             errors.append(
-                f"README claims {claimed['repos']} repos, expected "
-                f"{EXPECTED_REPO_COUNT}"
+                f"README claims {claimed['repos']} repo profiles, but "
+                f"profiles/ holds {live_repos}"
             )
         # Only the receipts phrasing claims these two; check them when present
         # rather than silently accepting a number nobody verified.

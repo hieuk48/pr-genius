@@ -1044,17 +1044,19 @@ def main() -> int:
         return 1
     # In strict mode, only fail on critical warnings (not orphan anti-patterns or profile evidence)
     #
-    # ⚠️ 后果（2026-10-17）：把新鲜度从 critical 名单里拿掉之后，**当前语料下
-    # 没有任何警告还是 critical**。也就是说 --strict 与不加它只在 `errors` 上
-    # 有区别，警告层面已经等价。这不是疏忽，是上面那个决定的直接结果 ——
-    # 改动前唯一会让 --strict 变红的警告就是新鲜度。
-    # 如果希望 --strict 重新有牙齿，得有人拍板哪一类警告升级为 critical
-    # （例如「无证据的肯定断言」，现在只警告不挡）。在那之前，别把 --strict
-    # 说成比 validate.py 多一道门。
+    # 牙齿（2026-10-17 定）：新鲜度降级后一度空心，现已选定并启用
+    # **「无证据的肯定断言」**（agent_guidelines.<k> 缺 evidence_url）
+    # 作为 critical —— 说了政策却不给出处，是本仓最不该放过的错误。
+    # 所以 --strict 比 validate.py 多的那一道门就是它。
     if "--strict" in sys.argv:
         critical_warnings = [w for w in warnings if not (
             w.startswith("orphan anti-pattern:") or
-            "缺 evidence_url" in w or
+            # 「无证据的肯定断言」**升级为 critical**（2026-10-17 定）。
+            # 理由：这个仓库的核心资产就是「每句话可追溯」。一条说了政策却
+            # 不给出处的断言，比文件过期严重得多 —— 它会被人当成事实引用。
+            # 所以从排除名单里拿掉，让 --strict 因它变红。
+            # (原先是排除的；同日把新鲜度降级后 --strict 变空心，这一类是
+            #  选定的「牙齿」。)
             "unknown type" in w or
             "differ significantly" in w or
             # 新鲜度（check 7）**一律不挡 --strict**，已标记与未标记都只报告。

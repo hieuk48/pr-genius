@@ -263,7 +263,37 @@ class TestIssue68MergeProbabilityBasis:
         keys = {f["factor"] for f in result.get("probability_factors") or []}
         assert "size_penalty" not in keys, f"体量因子无证据，不应存在: {keys}"
 
-    def test_url_string_rate_is_not_treated_as_measured(self):
+    def test_strict_gates_on_unevidenced_affirmative_claims(self):
+        """--strict 的「牙齿」：说了政策却不给出处 → 红。
+
+        2026-10-17 把新鲜度从 critical 名单降级后，--strict 一度空心（只在
+        errors 上挡，与不加它等价）。选定「无证据的肯定断言」作为那一道门。
+        这条测试防止它再被悄悄拿掉。
+        """
+        import subprocess, sys
+        root = REPO_ROOT
+        # 干净树应绿
+        clean = subprocess.run([sys.executable, "validate.py", "--strict"],
+                               cwd=root, capture_output=True, text=True)
+        assert clean.returncode == 0, clean.stdout[-500:]
+
+        # 注入一条无证据的肯定断言，必须红
+        target = root / "profiles" / "JasperHG90-memex" / "index.md"
+        original = target.read_text(encoding="utf-8")
+        try:
+            target.write_text(
+                original.replace("  require_issue_first: false",
+                                 "  require_issue_first: true", 1),
+                encoding="utf-8",
+            )
+            dirty = subprocess.run([sys.executable, "validate.py", "--strict"],
+                                   cwd=root, capture_output=True, text=True)
+            assert dirty.returncode == 1, "无证据的肯定断言必须挡门"
+            assert "缺 evidence_url" in dirty.stdout
+        finally:
+            target.write_text(original, encoding="utf-8")
+
+
         """external_merge_rate_30 是 URL 字符串时不得当合并率 (issue #68 根因)。"""
         mp, _, comparison, meta = _estimate_merge_probability(
             signals_neg=[], signals_pos=[], signals_neu=[],

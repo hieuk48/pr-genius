@@ -1,0 +1,199 @@
+---
+type: Repo Profile
+title: doobidoo/mcp-memory-service PR 模式分析
+description: Open-source persistent memory for AI agent pipelines — 由本账号 15 条真实外发 PR + 维护者关闭原话 + CONTRIBUTING 逐条核对而得
+repo: doobidoo/mcp-memory-service
+url: https://github.com/doobidoo/mcp-memory-service
+star: 2020
+language: Python
+license: Apache-2.0
+default_branch: main
+zsxh_pr_count: 15
+status: active
+analyzed_at: 2026-10-17
+data_source: GitHub API（仓库元数据 + 15 条 PR 的逐条结局与评论）+ CONTRIBUTING.md 全文
+agent_guidelines:
+  allow_unsolicited_pr: true
+  require_issue_first: true
+  require_signed_off: unknown
+  require_cla: unknown
+  ai_policy: welcoming-with-disclosure
+  maintainer_vibe: responsive
+  default_branch: main
+  response_time_h_median: unknown
+  external_merge_rate_30: unknown
+  greptile_auto_review: true
+  green_checks_insufficient: true
+  resolve_all_review_threads: true
+  agent_disclosure_required: true
+  tests_decide_competing_prs: true
+  ui_changes_need_screenshot: true
+  first_pr_wins_if_equivalent: true
+  never_loosen_explicit_config: true
+  cover_edge_cases_not_only_happy_path: true
+agent_guidelines_evidence:
+  allow_unsolicited_pr: https://github.com/doobidoo/mcp-memory-service/blob/main/CONTRIBUTING.md
+  require_issue_first: https://github.com/doobidoo/mcp-memory-service/blob/main/CONTRIBUTING.md
+  ai_policy: https://github.com/doobidoo/mcp-memory-service/blob/main/CONTRIBUTING.md#autonomous-agents--ai-generated-prs
+  agent_disclosure_required: https://github.com/doobidoo/mcp-memory-service/blob/main/CONTRIBUTING.md#autonomous-agents--ai-generated-prs
+  greptile_auto_review: https://github.com/doobidoo/mcp-memory-service/blob/main/CONTRIBUTING.md#review-process
+  green_checks_insufficient: https://github.com/doobidoo/mcp-memory-service/blob/main/CONTRIBUTING.md#review-process
+  resolve_all_review_threads: https://github.com/doobidoo/mcp-memory-service/blob/main/CONTRIBUTING.md#review-process
+  maintainer_vibe: https://github.com/doobidoo/mcp-memory-service/pull/1168
+  tests_decide_competing_prs: https://github.com/doobidoo/mcp-memory-service/pull/1182
+  ui_changes_need_screenshot: https://github.com/doobidoo/mcp-memory-service/pull/1183
+  first_pr_wins_if_equivalent: https://github.com/doobidoo/mcp-memory-service/pull/1194
+  never_loosen_explicit_config: https://github.com/doobidoo/mcp-memory-service/pull/1193
+  cover_edge_cases_not_only_happy_path: https://github.com/doobidoo/mcp-memory-service/pull/1168
+---
+
+# doobidoo/mcp-memory-service
+
+Persistent memory for AI agent pipelines (LangGraph, CrewAI, AutoGen) and
+Claude. REST API + knowledge graph + autonomous consolidation.
+**2020 stars, 350 forks, Python, Apache-2.0**, created 2024-12-26.
+
+> **How this profile was built.** From three sources, all checkable: the
+> repo's own `CONTRIBUTING.md` (read in full), 15 outbound PRs this account
+> opened here with their individual outcomes, and the maintainer's own words
+> in each closure. Every rule below links to where it came from. Where a
+> number is not measured it says `unknown` instead of being filled in.
+
+---
+
+## 先看这条：绿勾不等于能合
+
+> Every PR is reviewed automatically by [Greptile](https://www.greptile.com/).
+> Its findings arrive as **inline review comments, not as a failing check**, so
+> a PR can show **green checks and still be blocked**.
+>
+> **All review threads must be resolved before a PR can be merged.** The branch
+> protection on `main` enforces this. For each thread — Greptile's or a
+> maintainer's — either push a fix or reply explaining why no change is needed,
+> then resolve it. **Do not resolve a thread silently without a fix or a reply.**
+
+这是一条会让 CI 全绿的 PR 卡死在半路的规则。任何只看 check 状态的判断在这里都会错。
+
+编码 agent 有配套的
+[greptile greploop skill](https://github.com/greptileai/skills/blob/main/greploop/SKILL.md)
+自动跑 review-fix-resolve 循环，但本仓**有两条本地偏差**：
+
+1. **每个线程都要先回帖再 resolve**，误报也要回（skill 默认静默 resolve）
+2. 全部线程 resolve + checks 绿就停，**不需要 5/5 confidence**
+
+commit 仍走 conventional format；**不要 `git add -A`**。
+
+## 开工前必须认领 issue（CI 强制）
+
+> Check for existing work before you write any code. It is **your job** to
+> make sure you are not duplicating someone else's effort.
+
+- 先搜**已关闭**的 issue 和 PR——修复可能已经合过、或者**被拒且写了理由**
+- 要做已有 issue：留言认领，**等维护者确认再动手**
+- 非平凡改动没有 issue 的，**先开 issue 对齐方案**再写代码
+- 不做了要说一声
+
+**CI 会查**：PR 的 `Fixes #N` 如果作者既没在开 PR 前评论过该 issue、也没被 assign，
+`Claim Check` 工作流会打 `unclaimed` 标签。补评论、被 assign 后它自己会再跑并通过。
+
+> 「A PR for an issue someone else has already claimed, or one that duplicates
+> an open PR, **will usually be closed**.」
+
+这条直接解释了本账号的多条被拒（见下）。
+
+## AI / Agent 政策：欢迎，但必须披露
+
+> We welcome contributions from AI coding assistants and autonomous agents.
+> However, **transparency is required**.
+
+PR 由 agent 生成/起草/提交的，描述里**必须**含：
+
+```
+## Agent Disclosure
+```
+
+（作者身份、版权、以及每个改动进 `main` 前的保障见
+[AUTHORSHIP.md](https://github.com/doobidoo/mcp-memory-service/blob/main/AUTHORSHIP.md)。）
+
+PR 模板里还有一条勾选项：「I am a human contributor, or I have disclosed
+that this PR was generated by an automated agent」。
+
+## 实测：15 条外发 PR 的结局
+
+| 结果 | 数量 |
+|---|---|
+| merged | **8** |
+| closed without merge | **6** |
+| still open | 1 |
+| **merge rate (已定案)** | **57%** (8/14) |
+
+体量：多数是 **1–6 文件 / 数十到两百行** 的 `fix:`。评论量普遍极低（多数 PR 仅 1 条），
+review comments 只出现在 4 条上。**维护者不闲聊，但关单必写理由** —— 那才是信号。
+
+merged: #1165 #1166 #1167 #1184 #1185 #1192 #1195 #1397
+closed: #1168 #1182 #1183 #1191 #1193 #1194 · open: #1539
+
+## 维护者在关单时反复说的五件事
+
+### 1. 决定胜负的是测试
+
+> 「Three PRs landed on #1170 within a day (#1182, #1186, #1193), and I am taking
+> **#1186: it is the only one of the three that comes with a test**」
+
+同题三个 PR，**带测试的那个赢**。提之前先问：有没有让「没有我的改动就失败」的测试？
+
+### 2. 不要为同一个 issue 开重复 PR，先开的赢
+
+> 「Same issue as #1192… **keep one of the two**」
+> 「Closing in favour of #1177, which was **open a day earlier**…」
+
+### 3. UI 改动要 before/after 截图
+
+> 「add a **before/after screenshot** to the one that stays」
+
+#1183（纯 CSS 可见性）被关，#1192 合并。
+
+### 4. 显式配置不许被削弱
+
+> 「#1186 … **it stays strict when `MCP_QUALITY_LLM_MODEL` is set explicitly**.
+> This PR falls through to another model even then」
+
+降级/回退必须尊重用户显式设置的值。
+
+### 5. 要覆盖边界，不是只走主路径
+
+> 「#1164 … **it passes a case this one does not**. The difference is the early
+> return in `_select_explore_entities`」
+
+他会读代码找边界。happy-path 修复不够。
+
+补充：**测试范围可能写在 issue 评论里** ——
+「matches the scoping comment on #1151: **one real sqlite-vec plus FastAPI
+wiring test per endpoint**」。不读那条评论就会写偏。
+
+## 同题两次被拒的记录
+
+| 问题 | 尝试 | 结果 |
+|---|---|---|
+| LLM 端点不可用时的模型降级 | #1182 | ❌ 收 #1186（带测试、显式配置不松） |
+| 同上 | #1193 | ❌ 同上 |
+| 去掉 `src.` 前缀导入 | #1165 (`tests/`) | ✅ 合并 |
+| 同上 | #1191 (`scripts/`) | ❌ 被 #1238 取代 |
+
+**#1191 的关闭理由是「已在 main（via #1238）」，不是改法有问题。关单 ≠ 否定，
+读理由再决定要不要重试。**
+
+## 未测到的（诚实缺口）
+
+| 字段 | 值 | 为什么 |
+|---|---|---|
+| `response_time_h_median` | **unknown** | 未逐条测响应延迟 |
+| `external_merge_rate_30` | **unknown** | 只统计了本作者 15 条，没统计全仓 30 天外发 |
+| `require_signed_off` / `require_cla` | **unknown** | 未核 |
+
+`zsxh_pr_count: 15` 是**本作者的**，不是该仓外发总量。两者不能混。
+
+## 这个画像从哪来
+
+`docs/EVIDENCE_BOUNTIES.md` 那条飞轮的第一次自转 —— 用的不是征集来的证据，
+是**自己已经拥有的外发历史 + 目标仓库的公开规则**。零征集、零遥测。

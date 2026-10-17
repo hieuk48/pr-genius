@@ -54,6 +54,7 @@ federated_at: 2026-07-02
 | 21 | [datalayer/jupyter-mcp-server](https://github.com/datalayer/jupyter-mcp-server) | 1k | ✅ #266 | [datalayer-jupyter-mcp-server/index.md](./profiles/datalayer-jupyter-mcp-server/index.md) |
 | 22 | [samanhappy/mcphub](https://github.com/samanhappy/mcphub) | 3k | ✅ #987 | [samanhappy-mcphub/index.md](./profiles/samanhappy-mcphub/index.md) |
 | 23 | [yorgai/ORG2](https://github.com/yorgai/ORG2) | 3k | ✅ #350 | [yorgai-ORG2/index.md](./profiles/yorgai-ORG2/index.md) |
+| 24 | [doobidoo/mcp-memory-service](https://github.com/doobidoo/mcp-memory-service) | 2.0k | active (15 PRs, 57% merged) | [doobidoo-mcp-memory-service/index.md](./profiles/doobidoo-mcp-memory-service/index.md) |
 
 ### 大仓画像（交叉验证用）
 

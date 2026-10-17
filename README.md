@@ -73,7 +73,7 @@ PR once, in someone else's repo. This sees your portfolio over months.
 | **The policy of the repo you are aiming at** | A `Fixes #N` in the body is still the single most common reason a first PR gets bounced |
 
 Numbers, for the sceptical: 753 loaded patterns, 190 harvested failed-PR
-observations, 67 repo profiles, 302 reviewed cases. Those are receipts for the
+observations, 68 repo profiles, 302 reviewed cases. Those are receipts for the
 sentence above, not the point of it — every one of them is verified against the
 live tree on each release by `scripts/verify_claims.py`.
 

@@ -66,6 +66,11 @@ def _live_success_patterns() -> int:
            sum(1 for p in (REPO_ROOT / "success-patterns").glob("*.json"))
 
 
+def _live_count(dirname: str, pattern: str) -> int:
+    d = REPO_ROOT / dirname
+    return sum(1 for _ in d.glob(pattern)) if d.is_dir() else 0
+
+
 def _live_mcp_tools() -> list[str]:
     """Parse the `@mcp.tool(` decorators in prgenius/src/prgenius/mcp.py.
     Avoids importing mcp (which is an optional extra) and avoids running
@@ -94,8 +99,25 @@ def _live_pyproject_version() -> str:
 # The verifier accepts EITHER; the post-refactor form is the one we want to
 # converge on, but the pre-refactor form is not "wrong", just out of date.
 ALLOWED_PATTERNS_HEADLINES = [
-    re.compile(r"\*\*(\d+)\s+loaded\s+patterns\s+across\s+(\d+)\s+repos\.\*\*"),
-    re.compile(r"\*\*(\d+)\s+loaded\s+patterns\s+across\s+(\d+)\s+repos\*\*,\s*plus\s*(\d+)\s+PR\s+observations"),
+    # Pre-refactor headline: "**943 loaded patterns across 67 repos.**"
+    re.compile(
+        r"\*\*(?P<patterns>\d+)\s+loaded\s+patterns\s+across\s+(?P<repos>\d+)\s+repos\.\*\*"
+    ),
+    # Post-29268b2 headline: "**753 loaded patterns across 67 repos**, plus 190 PR observations"
+    re.compile(
+        r"\*\*(?P<patterns>\d+)\s+loaded\s+patterns\s+across\s+(?P<repos>\d+)\s+repos\*\*,"
+        r"\s*plus\s*(?P<observations>\d+)\s+PR\s+observations"
+    ),
+    # Post-readme-rewrite receipts sentence. The counts stopped being a
+    # headline and became evidence for a sentence about what the corpus is.
+    # The numbers are still checkable, which is the point of this gate — the
+    # phrasing changed, the accountability did not.
+    re.compile(
+        r"(?P<patterns>\d+)\s+loaded\s+patterns,"
+        r"\s*(?P<observations>\d+)\s+harvested\s+failed-PR\s+observations,"
+        r"\s*(?P<repos>\d+)\s+repo\s+profiles,"
+        r"\s*(?P<cases>\d+)\s+reviewed\s+cases"
+    ),
 ]
 
 EXPECTED_MCP_TOOLS = {
@@ -114,33 +136,50 @@ def main() -> int:
     readme = _read("README.md")
     errors: list[str] = []
 
-    # 1. README headline pattern count
+    # 1. README corpus counts (headline or receipts sentence)
     matched = False
     for pat in ALLOWED_PATTERNS_HEADLINES:
         m = pat.search(readme)
-        if m:
-            matched = True
-            claimed = int(m.group(1))
-            claimed_repos = int(m.group(2))
-            live_total = _live_anti_patterns()[0] + _live_success_patterns()
-            # Live: anti (md+json) + success (md+json). README pattern count is
-            # the same total under either phrasing.
-            if claimed != live_total:
+        if not m:
+            continue
+        matched = True
+        claimed = m.groupdict()
+
+        # Patterns = anti (md+json) + success (md+json), the same total under
+        # every phrasing we have ever used.
+        live_patterns = _live_anti_patterns()[0] + _live_success_patterns()
+        if claimed.get("patterns") and int(claimed["patterns"]) != live_patterns:
+            errors.append(
+                f"README claims {claimed['patterns']} patterns, but live "
+                f"({_live_anti_patterns()[0]} anti + "
+                f"{_live_success_patterns()} success) = {live_patterns}"
+            )
+        if claimed.get("repos") and int(claimed["repos"]) != EXPECTED_REPO_COUNT:
+            errors.append(
+                f"README claims {claimed['repos']} repos, expected "
+                f"{EXPECTED_REPO_COUNT}"
+            )
+        # Only the receipts phrasing claims these two; check them when present
+        # rather than silently accepting a number nobody verified.
+        if claimed.get("observations"):
+            live_obs = _live_count("pr-observations", "*.json")
+            if int(claimed["observations"]) != live_obs:
                 errors.append(
-                    f"README headline claims {claimed} patterns, but live "
-                    f"({_live_anti_patterns()[0]} anti + "
-                    f"{_live_success_patterns()} success) = {live_total}"
+                    f"README claims {claimed['observations']} PR observations, "
+                    f"but pr-observations/ holds {live_obs}"
                 )
-            if claimed_repos != EXPECTED_REPO_COUNT:
+        if claimed.get("cases"):
+            live_cases = _live_count("review-cases", "*.json")
+            if int(claimed["cases"]) != live_cases:
                 errors.append(
-                    f"README headline claims {claimed_repos} repos, expected "
-                    f"{EXPECTED_REPO_COUNT}"
+                    f"README claims {claimed['cases']} reviewed cases, but "
+                    f"review-cases/ holds {live_cases}"
                 )
-            break
+        break
     if not matched:
         errors.append(
-            "README headline does not match any known phrasing — see "
-            "ALLOWED_PATTERNS in scripts/verify_claims.py"
+            "README corpus counts do not match any known phrasing — see "
+            "ALLOWED_PATTERNS_HEADLINES in scripts/verify_claims.py"
         )
 
     # 2. MCP tool count

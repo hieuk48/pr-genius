@@ -52,40 +52,47 @@ for AUTHOR in "${AUTHORS[@]}"; do
     echo "═══════════════════════════════════════════════════"
     echo ""
 
-    # Human-readable table output
-    python3 -m prgenius status --author "$AUTHOR" --format table 2>&1 || {
+    # Human-readable table output (display only — the JSON call below is the
+    # one that records, so we do not write two snapshots per heartbeat).
+    # --snapshot-dir is passed explicitly: prgenius defaults to a path relative
+    # to the caller's cwd, which under cron is not this repo.
+    python3 -m prgenius status --author "$AUTHOR" --format table \
+        --no-save-snapshot --snapshot-dir "$SNAPSHOT_DIR" 2>&1 || {
         echo "ERROR: prgenius status failed for ${AUTHOR}" >&2
         continue
     }
     echo ""
 
-    # JSON snapshot — let prgenius write to its own default location
-    # (data/status-snapshots/YYYY-MM-DD.json). We do not write a separate
+    # JSON snapshot — prgenius records into SNAPSHOT_DIR
+    # (YYYY-MM-DD-HHMM.json) and reports the file it wrote in
+    # transition_summary.saved_to. We do not write a separate
     # heartbeat-side snapshot anymore — it was dead data prgenius never read.
-    JSON_OUTPUT=$(python3 -m prgenius status --author "$AUTHOR" --format json --save-snapshot 2>&1) || true
+    JSON_OUTPUT=$(python3 -m prgenius status --author "$AUTHOR" --format json \
+        --snapshot-dir "$SNAPSHOT_DIR" 2>&1) || true
 
     if [[ -n "$JSON_OUTPUT" ]]; then
-        # Check for actionable items
-        ACTION_COUNT=$(echo "$JSON_OUTPUT" | python3 -c "
+        # Check for actionable items + locate the snapshot prgenius just wrote
+        read -r ACTION_COUNT SAVED_TO <<<"$(echo "$JSON_OUTPUT" | python3 -c "
 import sys, json
 try:
     data = json.load(sys.stdin)
     actionable = sum(1 for p in data.get('prs', [])
                      if p.get('status') in ('NEEDS_REBASE', 'CI_FAILING', 'STALE_REVIEW', 'STALE_NO_REVIEW'))
-    print(actionable)
-except:
-    print(0)
-" 2>/dev/null || echo "0")
+    saved = (data.get('transition_summary') or {}).get('saved_to') or '-'
+    print(actionable, saved)
+except Exception:
+    print(0, '-')
+" 2>/dev/null || echo "0 -")"
 
         if [[ "$ACTION_COUNT" -gt 0 ]]; then
             HAS_ACTION=1
             echo "⚡ ${ACTION_COUNT} actionable item(s) for ${AUTHOR}"
         fi
 
-        # Locate the snapshot prgenius just wrote so the user knows where to find it
-        SNAPSHOT_FILE="${SNAPSHOT_DIR}/${DATE}.json"
-        if [[ -f "$SNAPSHOT_FILE" ]]; then
-            echo "📸 Snapshot: ${SNAPSHOT_FILE}"
+        if [[ "$SAVED_TO" != "-" && -f "${SNAPSHOT_DIR}/${SAVED_TO}" ]]; then
+            echo "📸 Snapshot: ${SNAPSHOT_DIR}/${SAVED_TO}"
+        else
+            echo "📸 Snapshot: none written (state unchanged since the previous one)"
         fi
     fi
     echo ""

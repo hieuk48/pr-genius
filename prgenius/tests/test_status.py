@@ -4,6 +4,7 @@ Locks down priority rules to prevent regressions.
 """
 import unittest
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 
 from prgenius.status import (
     PRStatus, PRInfo, classify_pr, _resolve_stale_days, _compute_transitions,
@@ -303,6 +304,56 @@ class TestSnapshotSaveTimestamp(unittest.TestCase):
             self.assertNotEqual(new_first.name, p2.name)
 
 
+class TestSnapshotRoundTrip(unittest.TestCase):
+    """A snapshot written by _save_snapshot must be found by _find_latest_snapshot.
+
+    The writer names files `YYYY-MM-DD-HHMM.json`. A reader that only accepts
+    `YYYY-MM-DD.json` writes snapshots it can never read back, and every run
+    then diffs against a stale file forever — this test is the regression lock
+    for that bug.
+    """
+
+    def test_save_then_find(self):
+        import tempfile
+        from pathlib import Path
+        from prgenius.status import _save_snapshot, _find_latest_snapshot
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td)
+            written = _save_snapshot({"prs": []}, d)
+            found = _find_latest_snapshot(d)
+            self.assertIsNotNone(found)
+            self.assertEqual(found.name, written.name)
+
+    def test_timestamped_beats_same_day_legacy_name(self):
+        import tempfile
+        from pathlib import Path
+        from prgenius.status import _find_latest_snapshot
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td)
+            (d / "2026-08-02.json").write_text('{"legacy": true}', encoding="utf-8")
+            (d / "2026-08-02-1430.json").write_text('{"newer": true}', encoding="utf-8")
+            (d / "2026-08-02-graphql.json").write_text('{"fixture": true}', encoding="utf-8")
+            latest = _find_latest_snapshot(d)
+            self.assertEqual(latest.name, "2026-08-02-1430.json")
+
+    def test_newer_date_beats_older_timestamped(self):
+        import tempfile
+        from pathlib import Path
+        from prgenius.status import _find_latest_snapshot
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td)
+            (d / "2026-08-02-2359.json").write_text("{}", encoding="utf-8")
+            (d / "2026-08-03.json").write_text("{}", encoding="utf-8")
+            self.assertEqual(_find_latest_snapshot(d).name, "2026-08-03.json")
+
+    def test_snapshot_name_accepts_hhmm_rejects_fixtures(self):
+        from prgenius.status import _SNAPSHOT_NAME
+        self.assertIsNotNone(_SNAPSHOT_NAME.match("2026-10-16-1704.json"))
+        self.assertIsNone(_SNAPSHOT_NAME.match("2026-08-02-graphql.json"))
+        self.assertIsNone(_SNAPSHOT_NAME.match("2026-08-02-17.json"))  # HHMM is 4 digits
+        self.assertIsNone(_SNAPSHOT_NAME.match("2026-08-02-170459.json"))  # not HHMMSS
+
+
 class TestStaleDaysSourceReporting(unittest.TestCase):
     """check_status must report the actual stale_days_source per run."""
 
@@ -479,6 +530,257 @@ class TestTransitions(unittest.TestCase):
         transitions = _compute_transitions(current, previous)
         self.assertFalse(transitions[0]["alert"])
         self.assertNotIn("severity", transitions[0])
+
+
+class TestEnrichHistory(unittest.TestCase):
+    """History fields come from the previous local snapshot only."""
+
+    def _result(self, prs, checked_at="2026-10-16T12:00:00+00:00"):
+        return {"checked_at": checked_at, "prs": prs}
+
+    def test_unchanged_inherits_status_since(self):
+        from prgenius.status import _enrich_history
+        current = self._result([{"repo": "o/r", "number": 1, "title": "P", "status": "STALE_NO_REVIEW"}])
+        previous = self._result(
+            [{"repo": "o/r", "number": 1, "title": "P", "status": "STALE_NO_REVIEW",
+              "status_since": "2026-10-11", "status_before": "NEEDS_REBASE"}],
+            checked_at="2026-10-12T12:00:00+00:00",
+        )
+        _enrich_history(current, previous)
+        pr = current["prs"][0]
+        self.assertEqual(pr["status_since"], "2026-10-11")
+        self.assertEqual(pr["days_in_status"], 5)
+        self.assertEqual(pr["status_before"], "NEEDS_REBASE")
+        self.assertEqual(pr["previous_status"], "STALE_NO_REVIEW")
+
+    def test_changed_resets_status_since_and_records_status_before(self):
+        from prgenius.status import _enrich_history
+        current = self._result([{"repo": "o/r", "number": 1, "title": "P", "status": "STALE_NO_REVIEW"}])
+        previous = self._result(
+            [{"repo": "o/r", "number": 1, "title": "P", "status": "NEEDS_REBASE",
+              "status_since": "2026-08-02", "status_before": None}],
+            checked_at="2026-10-15T12:00:00+00:00",
+        )
+        _enrich_history(current, previous)
+        pr = current["prs"][0]
+        self.assertEqual(pr["status_since"], "2026-10-16")
+        self.assertEqual(pr["days_in_status"], 0)
+        self.assertEqual(pr["status_before"], "NEEDS_REBASE")
+
+    def test_legacy_previous_without_status_since_uses_its_checked_at(self):
+        """A legacy snapshot proves the status held since its own date — and
+        nothing earlier."""
+        from prgenius.status import _enrich_history
+        current = self._result([{"repo": "o/r", "number": 1, "title": "P", "status": "NEEDS_REBASE"}])
+        previous = self._result(
+            [{"repo": "o/r", "number": 1, "title": "P", "status": "NEEDS_REBASE"}],
+            checked_at="2026-08-02T10:09:50+00:00",
+        )
+        _enrich_history(current, previous)
+        pr = current["prs"][0]
+        self.assertEqual(pr["status_since"], "2026-08-02")
+        self.assertIsNone(pr["status_before"])  # no claim about what came before
+
+    def test_no_previous_snapshot_is_honest(self):
+        """First run: no duration, no previous status — a baseline, not a story."""
+        from prgenius.status import _enrich_history
+        current = self._result([{"repo": "o/r", "number": 1, "title": "P", "status": "NEEDS_REBASE"}])
+        _enrich_history(current, None)
+        pr = current["prs"][0]
+        self.assertEqual(pr["status_since"], "2026-10-16")
+        self.assertEqual(pr["days_in_status"], 0)
+        self.assertIsNone(pr["previous_status"])
+        self.assertIsNone(pr["status_before"])
+
+
+class TestDescribeHistory(unittest.TestCase):
+    """The one-line history a user reads off the status table."""
+
+    def test_transition_narrative(self):
+        """'STALE_NO_REVIEW for 5d, was NEEDS_REBASE' — the product sentence."""
+        from prgenius.status import describe_history
+        text = describe_history({
+            "status": "STALE_NO_REVIEW", "status_since": "2026-10-11",
+            "days_in_status": 5, "previous_status": "STALE_NO_REVIEW",
+            "status_before": "NEEDS_REBASE",
+        })
+        self.assertEqual(text, "STALE_NO_REVIEW for 5d, was NEEDS_REBASE")
+
+    def test_changed_today(self):
+        from prgenius.status import describe_history
+        text = describe_history({
+            "status": "NEEDS_REBASE", "status_since": "2026-10-16",
+            "days_in_status": 0, "previous_status": "WAITING",
+            "status_before": "WAITING",
+        })
+        self.assertEqual(text, "NEEDS_REBASE (changed today), was WAITING")
+
+    def test_unchanged_without_prior_status(self):
+        from prgenius.status import describe_history
+        text = describe_history({
+            "status": "STALE_NO_REVIEW", "status_since": "2026-10-11",
+            "days_in_status": 5, "previous_status": "STALE_NO_REVIEW",
+            "status_before": None,
+        })
+        self.assertEqual(text, "STALE_NO_REVIEW for 5d")
+
+    def test_unchanged_since_today_does_not_claim_a_change(self):
+        """days_in_status==0 is not proof of a transition — no 'was X' claim."""
+        from prgenius.status import describe_history
+        text = describe_history({
+            "status": "NEEDS_REBASE", "status_since": "2026-10-16",
+            "days_in_status": 0, "previous_status": "NEEDS_REBASE",
+            "status_before": None,
+        })
+        self.assertEqual(text, "NEEDS_REBASE since today")
+        self.assertNotIn("was", text)
+
+    def test_first_record_on_baseline(self):
+        from prgenius.status import describe_history
+        text = describe_history(
+            {"status": "NEEDS_REBASE", "status_since": "2026-10-16",
+             "days_in_status": 0, "previous_status": None},
+            baseline=True,
+        )
+        self.assertEqual(text, "first record")
+
+    def test_unenriched_entry_says_nothing(self):
+        from prgenius.status import describe_history
+        self.assertEqual(describe_history({"status": "CLEAN"}), "")
+
+
+class TestCheckStatusRecording(unittest.TestCase):
+    """Recording is the default and never invents history."""
+
+    def _pr(self, status="STALE_NO_REVIEW", number=1):
+        """Build a PRInfo whose fields make classify_pr() land on `status`."""
+        now = datetime.now(timezone.utc)
+        fields = {
+            "repo": "org/repo", "number": number, "title": f"PR{number}",
+            "url": "https://example.invalid/pr", "author": "someone",
+            "created_at": (now - timedelta(days=40)).isoformat(),
+            "updated_at": (now - timedelta(days=20)).isoformat(),
+            "mergeable": "MERGEABLE", "merge_state": "CLEAN", "review_decision": "",
+            "checks_status": "success", "last_commit_at": "", "last_review_at": "",
+            "is_own_repo": False,
+        }
+        if status == "NEEDS_REBASE":
+            fields["merge_state"] = "BEHIND"
+        elif status == "WAITING":
+            fields["updated_at"] = (now - timedelta(days=1)).isoformat()
+        elif status == "STALE_NO_REVIEW":
+            fields["last_review_at"] = ""
+            fields["updated_at"] = (now - timedelta(days=20)).isoformat()
+        return PRInfo(**fields)
+
+    def _run(self, snapshot_dir, prs=None, **kwargs):
+        from prgenius import status as st_mod
+        original = st_mod.fetch_open_prs
+        st_mod.fetch_open_prs = lambda **kw: prs if prs is not None else [self._pr()]
+        try:
+            from prgenius.status import check_status
+            return check_status(author="someone", snapshot_dir=Path(snapshot_dir), **kwargs)
+        finally:
+            st_mod.fetch_open_prs = original
+
+    def test_default_writes_snapshot_and_reports_baseline(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run(td)
+            files = list(Path(td).glob("*.json"))
+            self.assertEqual(len(files), 1)
+            self.assertTrue(result["transition_summary"]["baseline"])
+            self.assertEqual(result["transitions"], [])
+            pr = result["prs"][0]
+            self.assertEqual(pr["days_in_status"], 0)
+            self.assertIsNone(pr["previous_status"])
+
+    def test_second_run_records_transition_from_real_previous(self):
+        import json
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            self._run(td, prs=[self._pr(status="NEEDS_REBASE")])
+            result = self._run(td, prs=[self._pr(status="STALE_NO_REVIEW")])
+            pr = result["prs"][0]
+            self.assertEqual(pr["status_before"], "NEEDS_REBASE")
+            self.assertEqual(pr["previous_status"], "NEEDS_REBASE")
+            self.assertEqual(pr["days_in_status"], 0)
+            changed = [t for t in result["transitions"] if t["changed"]]
+            self.assertEqual(len(changed), 1)
+            self.assertEqual(changed[0]["previous_status"], "NEEDS_REBASE")
+            self.assertEqual(changed[0]["current_status"], "STALE_NO_REVIEW")
+            self.assertFalse(result["transition_summary"]["baseline"])
+            # and the transition is persisted for the run after this one
+            saved = json.loads((Path(td) / result["transition_summary"]["saved_to"]).read_text())
+            self.assertEqual(saved["prs"][0]["status_before"], "NEEDS_REBASE")
+
+    def test_unchanged_state_skips_rewrite(self):
+        """Same state, recent snapshot → no new file (polling must not flood)."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            self._run(td)
+            self._run(td)
+            self.assertEqual(len(list(Path(td).glob("*.json"))), 1)
+
+    def test_save_snapshot_false_writes_nothing(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            self._run(td, prs=[self._pr(status="NEEDS_REBASE")])
+            result = self._run(td, prs=[self._pr(status="STALE_NO_REVIEW")],
+                               save_snapshot=False)
+            # read-only run: no new snapshot, but history is still reported
+            self.assertEqual(len(list(Path(td).glob("*.json"))), 1)
+            self.assertIsNone(result["transition_summary"]["saved_to"])
+            self.assertEqual(
+                result["transition_summary"]["skipped_write"], "recording disabled"
+            )
+            pr = result["prs"][0]
+            self.assertEqual(pr["status_before"], "NEEDS_REBASE")
+            self.assertEqual(pr["previous_status"], "NEEDS_REBASE")
+
+    def test_format_table_first_record_is_honest(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run(td)
+            from prgenius.status import format_table
+            text = format_table(result)
+            self.assertIn("first record", text)
+            self.assertIn("baseline established", text)
+            self.assertNotIn("was NEEDS_REBASE", text)  # no invented prior status
+
+    def test_format_table_shows_history_sentence(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            self._run(td, prs=[self._pr(status="NEEDS_REBASE")])
+            result = self._run(td, prs=[self._pr(status="STALE_NO_REVIEW")])
+            from prgenius.status import format_table
+            text = format_table(result)
+            self.assertIn("STALE_NO_REVIEW (changed today), was NEEDS_REBASE", text)
+
+    def test_json_output_stays_parseable_when_recording(self):
+        """--format json must remain pure JSON even while a snapshot is written."""
+        import io
+        import json
+        import tempfile
+        from contextlib import redirect_stdout
+        from prgenius.cli import main
+        from prgenius import status as st_mod
+        original = st_mod.fetch_open_prs
+        st_mod.fetch_open_prs = lambda **kw: [self._pr()]
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = main([
+                        "status", "--author", "someone", "--format", "json",
+                        "--snapshot-dir", td,
+                    ])
+                self.assertEqual(rc, 0)
+                data = json.loads(buf.getvalue())  # would raise if stdout were dirty
+                self.assertTrue(data["transition_summary"]["baseline"])
+                self.assertTrue(list(Path(td).glob("*.json")))
+        finally:
+            st_mod.fetch_open_prs = original
 
 
 class TestProfileWriteback(unittest.TestCase):

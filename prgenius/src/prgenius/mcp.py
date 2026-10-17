@@ -444,7 +444,7 @@ def _load_tools(repo_root: Path | None = None):
         author: str | None = None,
         repo: str | None = None,
         stale_days: int | None = None,
-        save_snapshot: bool = False,
+        save_snapshot: bool = True,
     ) -> dict:
         """Check health of in-flight PRs (outbound PR heartbeat).
 
@@ -456,10 +456,11 @@ def _load_tools(repo_root: Path | None = None):
             author: GitHub username to check PRs for
             repo: Repository to check (org/name)
             stale_days: Days without update to consider stale (default: profile or 14)
-            save_snapshot: If True, persist the result to data/status-snapshots/
-                for transition detection across runs. Default False because MCP
-                callers (Cursor, Claude Code) may poll frequently and would
-                otherwise flood the snapshot directory.
+            save_snapshot: Persist the result to data/status-snapshots/ and
+                diff it against the previous snapshot (default True — the
+                dashboard's memory is the point of this tool). Frequent polling
+                is safe: a snapshot is written when state changes and at most
+                once a day when it does not, so the directory cannot flood.
 
         Returns:
             dict with prs, ignored, summary, actions, transitions
@@ -498,7 +499,7 @@ def _load_tools(repo_root: Path | None = None):
         """
         from .status import check_status, suggest_profile_writeback
         try:
-            result = check_status(author=author, repo_root=rr, save_snapshot=False)
+            result = check_status(author=author, repo_root=rr)
             return suggest_profile_writeback(result, repo_root=rr, mode=mode)
         except RuntimeError as e:
             return [{"error": str(e)}]

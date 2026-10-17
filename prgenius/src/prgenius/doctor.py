@@ -165,8 +165,17 @@ def _sample_block(repo_root: Path) -> dict:
     return sample
 
 
-def run_doctor(repo_root: Optional[Path] = None) -> dict:
-    """Run all self-checks and return a machine-readable report."""
+def run_doctor(
+    repo_root: Optional[Path] = None,
+    repo_root_source: Optional[str] = None,
+) -> dict:
+    """Run all self-checks and return a machine-readable report.
+
+    ``repo_root_source`` overrides the label reported in the result. Pass
+    ``"arg"`` (or ``"cli"``) when the caller resolved ``repo_root`` from an
+    explicit user argument — module self-resolution is then irrelevant, and
+    reporting its verdict would contradict the path being shown.
+    """
     from .utils import get_repo_root, get_repo_root_source
 
     root = Path(repo_root) if repo_root else get_repo_root()
@@ -182,7 +191,12 @@ def run_doctor(repo_root: Optional[Path] = None) -> dict:
         # （wheel 安装时它会落在 site-packages 的上级 lib/ 目录，看着像路径
         # 其实不是）。如实报出来，别让新用户对着一个假路径排查。
         # `package-data` = wheel 自带的决策语料子集 (issue #116)。
-        "repo_root_source": get_repo_root_source(),
+        # `arg`      = 用户显式传了 --repo-root / repo_root=。此时模块自解析
+        #             的结果毫无意义：对着一个可用的 checkout 打印 "(none)"
+        #             正是这条警告想根治的那种误导。
+        "repo_root_source": (
+            repo_root_source if repo_root_source else get_repo_root_source()
+        ),
         "readable": (root / "anti-patterns").is_dir(),
         "anti_patterns": anti_total,
         "anti_patterns_with_trigger_keywords": anti_with_kw,

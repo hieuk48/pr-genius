@@ -108,7 +108,7 @@ class Sdist(sdist):
         # Inject the corpus into the release tree so the wheel that
         # `python -m build` builds from this sdist also carries it. The
         # checkout itself is left untouched (validate.py would double-count).
-        _copy_corpus(Path(base_dir) / "data")
+        _copy_corpus_from_source(Path(base_dir) / "data")
 
 
 setup(cmdclass={"build_py": BuildPy, "sdist": Sdist})

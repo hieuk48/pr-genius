@@ -491,7 +491,13 @@ def cmd_doctor(args) -> int:
     from .doctor import run_doctor, format_doctor_text
 
     repo_root = _get_repo_root(args)
-    report = run_doctor(repo_root)
+    # Tell doctor where the path came from. An explicit --repo-root must not be
+    # labelled with module self-resolution's verdict — that is how a working
+    # checkout ends up printed as "(none)".
+    report = run_doctor(
+        repo_root,
+        repo_root_source="arg" if args.repo_root else None,
+    )
 
     if args.format == "json":
         print(json.dumps(report, indent=2, ensure_ascii=False))

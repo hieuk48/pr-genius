@@ -162,12 +162,39 @@ class TestIssue68MergeProbabilityBasis:
         assert result["merge_probability_degraded_reason"] == ""
         assert result["comparison"].get("repo_merge_rate") == 0.2
 
-    def test_degraded_flag_and_reason_without_rate(self):
-        """拿不到合并率时必须 degraded=true + 原因 (issue #68 核心)。"""
+    def test_profile_merge_rate_is_used_when_caller_passes_none(self):
+        """画像里的实测合并率必须被用上，而不是把 PR 打回档位默认值。
+
+        修前：repo_context 只从 --repo-merge-rate 取值，画像的
+        external_merge_rate / external_merge_rate_30 从未被读入，于是每条
+        PR 都 degraded 成 0.35/0.15 —— 回溯 15 条有结局的 PR，全体同分，
+        零分辨力。encode/httpx 的画像有 external_merge_rate: 0.2（数字），
+        正好用来验证这一条。
+        """
         result = analyze_pr(
             title="fix: typo",
             description="Fix typo",
             repo="encode/httpx",
+            repo_root=REPO_ROOT,
+            body="Fixes #1",
+        )
+        assert result["merge_probability_degraded"] is False
+        assert result["merge_probability_basis"] == "measured"
+        assert result["merge_probability"] == pytest.approx(0.2)
+        assert result["repo_context"]["merge_rate"] == 0.2
+        assert result["repo_context"]["merge_rate_source"] == "profile:external_merge_rate"
+
+    def test_degraded_flag_and_reason_without_rate(self):
+        """调用方没给、画像里也没有可用数值时必须 degraded=true + 原因 (issue #68 核心)。
+
+        用一个没有画像的仓库，保证「拿不到合并率」这个前提真的成立 ——
+        原来这里用 encode/httpx，而它的画像带着 external_merge_rate: 0.2，
+        于是这条断言锁的是 bug 而不是契约。
+        """
+        result = analyze_pr(
+            title="fix: typo",
+            description="Fix typo",
+            repo="no-such-org/no-such-repo",
             repo_root=REPO_ROOT,
             body="Fixes #1",
         )

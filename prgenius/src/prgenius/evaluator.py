@@ -761,12 +761,36 @@ def _build_signals_and_checklist(
             signals_neu.append({"key": "first_contributor", "description": "首次贡献者"})
 
     # ---- 5. 仓库上下文 ----
+    # The caller may pass a merge rate explicitly (--repo-merge-rate). When it
+    # does not, fall back to the measured rate in the repo's own profile —
+    # issue #68 named the keys but repo_context was never populated from them,
+    # so merge_probability degraded to a tier default on every repo that did
+    # not pass the flag by hand. The profile was loaded two lines below and
+    # then thrown away after a None check.
+    from .parser import profile_get as _profile_get
+    repo_profile = _profile_get(repo_root, repo)
+    profile_guidelines = (
+        (repo_profile or {}).get("frontmatter", {}).get("agent_guidelines") or {}
+    ) if repo_profile else {}
+    if repo_merge_rate <= 0:
+        for _key in _MERGE_RATE_KEYS:
+            _val = profile_guidelines.get(_key)
+            if isinstance(_val, (int, float)) and 0.0 < float(_val) <= 1.0:
+                repo_merge_rate = float(_val)
+                repo_context_hint = f"profile:{_key}"
+                break
+        else:
+            repo_context_hint = None
+    else:
+        repo_context_hint = "caller"
+
     repo_context: dict = {}
     if star_count > 0:
         repo_context["star_count"] = star_count
         repo_context["repo_size"] = get_repo_size(star_count)
     if repo_merge_rate > 0:
         repo_context["merge_rate"] = repo_merge_rate
+        repo_context["merge_rate_source"] = repo_context_hint
         if repo_merge_rate < 0.3:
             signals_neu.append({"key": "strict_repo", "description": f"该仓库近期 merge 率较低 ({repo_merge_rate:.0%})，审查严格"})
         elif repo_merge_rate > 0.8:

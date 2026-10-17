@@ -21,7 +21,7 @@ agent_guidelines:
   maintainer_vibe: responsive
   default_branch: main
   response_time_h_median: unknown
-  external_merge_rate_30: unknown
+  external_merge_rate_30: 0.91
   greptile_auto_review: true
   green_checks_insufficient: true
   resolve_all_review_threads: true
@@ -183,12 +183,33 @@ wiring test per endpoint**」。不读那条评论就会写偏。
 **#1191 的关闭理由是「已在 main（via #1238）」，不是改法有问题。关单 ≠ 否定，
 读理由再决定要不要重试。**
 
+## 合并率实测（分窗口，因为它在变）
+
+从 `pulls?state=closed` 分页取 400 条（#969–#1563），按编号窗口拆：
+
+| 编号窗口 | n | 合并 | 全员合并率 |
+|---|---|---|---|
+| #1150–1210（本作者那批） | 44 | 32 | **73%** |
+| #1211–1410 | 146 | 133 | **91%** |
+| #1411–1600 | 100 | 98 | **98%** |
+
+**`external_merge_rate_30 = 0.91`**（外部作者，排除 bot 与维护者：n=135, merged=123）。
+
+两条由此得出、和直觉相反的结论：
+
+1. **这个仓现在几乎照单全收（0.91–0.98）。** 所以主要风险不是「质量不过关」，是
+   **竞争与时机** —— 正好对应那些「closing in favour of #1186 / #1177」的关单。
+2. **本作者那批窗口基线是 73%，而本作者是 54%（7/13）**，比同窗口低 19 个点。
+   不能只用「仓库难合」解释自己的失败。
+
+→ 提 PR 前的第一动作是**抢时间 + 查重**，不是把改动打磨大。
+
 ## 未测到的（诚实缺口）
 
 | 字段 | 值 | 为什么 |
 |---|---|---|
 | `response_time_h_median` | **unknown** | 未逐条测响应延迟 |
-| `external_merge_rate_30` | **unknown** | 只统计了本作者 15 条，没统计全仓 30 天外发 |
+| ~~`external_merge_rate_30`~~ | **0.91** | 已实测：外部作者（排除 bot 与维护者）n=135, merged=123 |
 | `require_signed_off` / `require_cla` | **unknown** | 未核 |
 
 `zsxh_pr_count: 15` 是**本作者的**，不是该仓外发总量。两者不能混。

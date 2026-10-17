@@ -593,6 +593,7 @@ def _build_signals_and_checklist(
     anti_matches: List[dict],
     repo_root: Path,
     repo: str,
+    diff_stat: str = "",
 ) -> Tuple[List[dict], List[dict], List[dict], List[dict], dict]:
     """构建信号列表和检查清单。
 
@@ -761,12 +762,36 @@ def _build_signals_and_checklist(
             signals_neu.append({"key": "first_contributor", "description": "首次贡献者"})
 
     # ---- 5. 仓库上下文 ----
+    # The caller may pass a merge rate explicitly (--repo-merge-rate). When it
+    # does not, fall back to the measured rate in the repo's own profile —
+    # issue #68 named the keys but repo_context was never populated from them,
+    # so merge_probability degraded to a tier default on every repo that did
+    # not pass the flag by hand. The profile was loaded two lines below and
+    # then thrown away after a None check.
+    from .parser import profile_get as _profile_get
+    repo_profile = _profile_get(repo_root, repo)
+    profile_guidelines = (
+        (repo_profile or {}).get("frontmatter", {}).get("agent_guidelines") or {}
+    ) if repo_profile else {}
+    if repo_merge_rate <= 0:
+        for _key in _MERGE_RATE_KEYS:
+            _val = profile_guidelines.get(_key)
+            if isinstance(_val, (int, float)) and 0.0 < float(_val) <= 1.0:
+                repo_merge_rate = float(_val)
+                repo_context_hint = f"profile:{_key}"
+                break
+        else:
+            repo_context_hint = None
+    else:
+        repo_context_hint = "caller"
+
     repo_context: dict = {}
     if star_count > 0:
         repo_context["star_count"] = star_count
         repo_context["repo_size"] = get_repo_size(star_count)
     if repo_merge_rate > 0:
         repo_context["merge_rate"] = repo_merge_rate
+        repo_context["merge_rate_source"] = repo_context_hint
         if repo_merge_rate < 0.3:
             signals_neu.append({"key": "strict_repo", "description": f"该仓库近期 merge 率较低 ({repo_merge_rate:.0%})，审查严格"})
         elif repo_merge_rate > 0.8:
@@ -779,6 +804,7 @@ def _build_signals_and_checklist(
     # ---- 5.5. 无 policy 大仓 needs_preflight 检查 (克莱恩 2026-07-19 P1) ----
     has_policy = _check_has_policy(repo, repo_root)
     repo_context["has_policy"] = has_policy
+    repo_context["diff_stat"] = diff_stat
 
     # Check if repo has a profile (even without policy)
     from .parser import profile_get
@@ -1088,16 +1114,59 @@ def _estimate_merge_probability(
             base_probability = 0.15
         basis = "tier_estimate" if tier in ("low_risk", "medium_risk", "high_risk") else "unknown"
 
-    # 只对真正区分性的信号做调整（避免和 tier 重复计算）
-    # 这些信号能改变合并概率，不只是风险标记
-    for neg in signals_neg:
-        key = neg.get("key", "")
-        if key == "merge_conflict":
-            base_probability *= 0.3  # 有冲突 → 大幅降低
-        elif key == "duplicate_pr_explicit_declare":
-            base_probability *= 0.1  # 明确重复 → 几乎不可能
-        elif key == "maintainer_internal_handling":
-            base_probability *= 0.05  # 维护者要内部处理 → 不可能
+    # ---- 按 PR 调整 ----
+    # 修前这里只认 3 个 key（merge_conflict / duplicate_pr_explicit_declare /
+    # maintainer_internal_handling），而它们全都依赖网络状态 —— 只喂
+    # title+body+diff_stat 时一个都不触发，于是概率恒等于仓库基线率。
+    # 实测：2 行 docs typo 与 200 文件重写都得到同一个 0.91。
+    #
+    # 下面这些因子的共同约束：**只用工具真的能从输入检测到的东西**，
+    # 且每条都指向仓库自己写下的规则。它们是 **priors，不是拟合结果** ——
+    # 15 条有结局 PR 的回溯显示现有信号无法拟合（anti-pattern 均值
+    # merged 0.50 / closed 0.33，方向相反），所以这里不装作在预测，只做
+    # 「对已声明规则的符合度」调整。
+    factors: List[dict] = []
+    sig_keys = {n.get("key") for n in (signals_neg + signals_pos + signals_neu)}
+
+    def _apply(key: str, factor: float, why: str) -> None:
+        nonlocal base_probability
+        if key in sig_keys:
+            before = base_probability
+            base_probability *= factor
+            factors.append({
+                "factor": key, "multiplier": factor,
+                "before": round(before, 4), "after": round(base_probability, 4),
+                "why": why,
+            })
+
+    # 硬阻断类（原样保留，它们需要网络状态才出现）
+    _apply("merge_conflict", 0.3, "分支有冲突")
+    _apply("duplicate_pr_explicit_declare", 0.1, "PR 显式声明为重复")
+    _apply("maintainer_internal_handling", 0.05, "维护者将内部处理")
+
+    # 可从输入检测、且有文档依据的因子
+    for _k in ("no_issue_link", "no_issue_link_hint"):
+        _apply(_k, 0.70,
+               "正文没有 Fixes/Closes #N —— 目标仓库的 CONTRIBUTING 要求先认领 issue，"
+               "未认领的 PR 会被 CI 打标签，重复的通常直接关闭")
+    _apply("needs_preflight", 0.85,
+           "大仓且无画像/无政策，先开 issue 对齐方案再动手")
+
+    # 刻意没有 size_penalty。曾经加过（「体量大 review 成本高」是通用直觉），
+    # 回溯把它证伪了：15 条有结局 PR 里唯一被它降分的是 #1166（+1163/-216），
+    # 而那条**合了**。目标仓库的维护者关单理由里也没有一条是体量 —— 是竞争、
+    # 是测试、是重复。没有证据的因子留着就是把噪声写进结论。
+
+    # 测试加成：维护者原话「三个 PR 里我收唯一带测试的那个」
+    ds_txt = str(repo_context.get("diff_stat") or "").lower()
+    if re.search(r"\btest[s]?\b|\bspec[s]?\b|_test\.|\.spec\.", ds_txt):
+        before = base_probability
+        base_probability *= 1.08
+        factors.append({
+            "factor": "tests_in_diff", "multiplier": 1.08,
+            "before": round(before, 4), "after": round(base_probability, 4),
+            "why": "diff-stat 含测试文件 —— 目标仓库明确以「是否带测试」决定同题撞车的取舍",
+        })
 
     # 优化路径（所有 negative signals 都列出来供参考）
     optimization_path: List[dict] = []
@@ -1152,6 +1221,23 @@ def _estimate_merge_probability(
         "degraded": basis != "measured",
         "degraded_reason": degraded_reason,
         "rate_source": rate_source,
+        # 每一步按 PR 的调整都摊开 —— 概率不该是个黑箱数字。
+        # 这些是 priors（对照仓库已声明规则的符合度），不是拟合出来的预测。
+        "factors": factors,
+        "base_rate": round(merge_rate if merge_rate > 0 else base_probability, 4),
+        # 校准状态：这个数**不是**经过验证的预测。
+        # 回溯 15 条有结局 PR（doobidoo/mcp-memory-service，本作者）：
+        #   · 只给摘要式 diff-stat（无文件名）→ 判别 0.50（等于随机）
+        #   · 给真实 git diff --stat（含文件名）→ 判别 0.69
+        #     含测试的 10 条合了 7 条，不含测试的 4 条合了 1 条
+        # 唯一起作用的因子是 tests_in_diff，与维护者原话一致。样本极小。
+        "calibration": {
+            "status": "unvalidated",
+            "retrospective_n": 15,
+            "pairwise_discrimination_with_file_names": 0.69,
+            "pairwise_discrimination_without_file_names": 0.50,
+            "note": "对已声明规则的符合度调整，非拟合预测。因子只有测试与 issue 关联两条有证据。",
+        },
     }
 
     return merge_probability, optimization_path, comparison, probability_meta
@@ -1213,6 +1299,9 @@ def _assemble_output(
         "merge_probability_basis": (probability_meta or {}).get("basis", "unknown"),
         "merge_probability_degraded": (probability_meta or {}).get("degraded", False),
         "merge_probability_degraded_reason": (probability_meta or {}).get("degraded_reason", ""),
+        "probability_factors": (probability_meta or {}).get("factors", []),
+        "merge_probability_base_rate": (probability_meta or {}).get("base_rate"),
+        "merge_probability_calibration": (probability_meta or {}).get("calibration"),
         "optimization_path": optimization_path,
         "signals": {
             "positive": signals_pos,
@@ -1300,6 +1389,7 @@ def analyze_pr(
         author_association=author_association, mergeable=mergeable,
         is_bot=is_bot, require_issue_first=require_issue_first,
         anti_matches=anti_matches, repo_root=repo_root, repo=repo,
+        diff_stat=diff_stat,
     )
 
     # ---- Phase 2: Tier 分类 + PR 大小评估 (Sections 8, 8.5) ----

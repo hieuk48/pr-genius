@@ -205,6 +205,64 @@ class TestIssue68MergeProbabilityBasis:
         assert "merge_rate" in reason
         assert 0.0 < result["merge_probability"] < 1.0
 
+    def test_merge_probability_varies_with_the_pr(self):
+        """merge_probability 必须按 PR 变，而且每一步都要摊开。
+
+        修前：只认 3 个需要网络状态的信号 key，只喂 title+body+diff-stat 时
+        一个都不触发，于是概率恒等于仓库基线率 —— 实测 2 行 docs typo 与
+        200 文件重写都得到同一个 0.91。
+        """
+        def mp(**kw):
+            base = dict(title="fix: x", description="", repo="doobidoo/mcp-memory-service",
+                        repo_root=REPO_ROOT, body="Fixes #1")
+            base.update(kw)
+            return analyze_pr(**base)
+
+        clean = mp(diff_stat="1 file changed, 2 insertions(+), 1 deletion(-)")
+        messy = mp(title="refactor: rewrite everything",
+                   body="no issue link at all",
+                   diff_stat="200 files changed, 90000 insertions(+), 88000 deletions(-)")
+        tested = mp(title="fix: race in pool",
+                    diff_stat="2 files changed, 120 insertions(+), 10 deletions(-)\nsrc/a.py\ntests/pool_test.py")
+
+        vals = [clean["merge_probability"], messy["merge_probability"],
+                tested["merge_probability"]]
+        assert len(set(vals)) == 3, f"三种形状应得到三种概率，实得 {vals}"
+        assert tested["merge_probability"] > clean["merge_probability"]
+        assert clean["merge_probability"] > messy["merge_probability"]
+
+        # 每一步都必须摊开，不能是黑箱
+        assert tested["probability_factors"], "加分项要写明"
+        for f in tested["probability_factors"]:
+            assert {"factor", "multiplier", "before", "after", "why"} <= set(f)
+        assert clean["merge_probability_base_rate"] == pytest.approx(0.91)
+
+    def test_merge_probability_declares_its_calibration_gap(self):
+        """回溯 15 条有结局 PR 只得到 0.69 判别（且依赖 diff-stat 带文件名）。
+
+        这个数字必须留在输出里。把它藏起来，就是拿一个未校准的数当预测卖。
+        """
+        result = analyze_pr(
+            title="fix: x", description="", body="Fixes #1",
+            repo="doobidoo/mcp-memory-service", repo_root=REPO_ROOT,
+        )
+        cal = result.get("merge_probability_calibration") or {}
+        assert cal.get("status") == "unvalidated"
+        assert cal.get("retrospective_n") == 15
+        assert cal.get("pairwise_discrimination_with_file_names") == 0.69
+        assert cal.get("pairwise_discrimination_without_file_names") == 0.50
+
+    def test_no_size_penalty_without_evidence(self):
+        """体量惩罚被回溯证伪后必须彻底消失，不能偷偷留着。"""
+        result = analyze_pr(
+            title="refactor: rewrite everything", description="",
+            body="Fixes #1",
+            repo="doobidoo/mcp-memory-service", repo_root=REPO_ROOT,
+            diff_stat="200 files changed, 90000 insertions(+), 88000 deletions(-)",
+        )
+        keys = {f["factor"] for f in result.get("probability_factors") or []}
+        assert "size_penalty" not in keys, f"体量因子无证据，不应存在: {keys}"
+
     def test_url_string_rate_is_not_treated_as_measured(self):
         """external_merge_rate_30 是 URL 字符串时不得当合并率 (issue #68 根因)。"""
         mp, _, comparison, meta = _estimate_merge_probability(

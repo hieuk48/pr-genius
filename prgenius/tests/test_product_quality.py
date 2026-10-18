@@ -263,6 +263,38 @@ class TestIssue68MergeProbabilityBasis:
         keys = {f["factor"] for f in result.get("probability_factors") or []}
         assert "size_penalty" not in keys, f"体量因子无证据，不应存在: {keys}"
 
+    def test_url_string_rate_is_not_treated_as_measured(self):
+        """external_merge_rate_30 是 URL 字符串时不得当合并率 (issue #68 根因)。
+
+        修前该契约由同名 test 锁住，但 PR #124 (7416715) 误把 def 行
+        替换为 test_strict_gates_...，却保留了原函数体 —— 这段代码变成了
+        test_strict_gates_... 的尾段（求值后丢弃），CI 看起来仍 PASSED，
+        但 issue #68 的回归保护实际消失。本测试恢复原契约锁。
+        """
+        mp, _, comparison, meta = _estimate_merge_probability(
+            signals_neg=[], signals_pos=[], signals_neu=[],
+            tier="medium_risk",
+            repo_context={"external_merge_rate_30": "https://github.com/x/y/pulls?q=is%3Apr"},
+        )
+        assert meta["degraded"] is True
+        assert meta["basis"] == "tier_estimate"
+        assert mp == pytest.approx(0.35)  # medium_risk 档默认
+        assert comparison == {}
+
+        mp2, _, comparison2, meta2 = _estimate_merge_probability(
+            signals_neg=[], signals_pos=[], signals_neu=[],
+            tier="medium_risk",
+            repo_context={
+                "external_merge_rate_30": "https://github.com/x/y/pulls?q=is%3Apr",
+                "external_merge_rate": 0.4,
+            },
+        )
+        assert meta2["degraded"] is False
+        assert meta2["basis"] == "measured"
+        assert meta2["rate_source"] == "external_merge_rate"
+        assert mp2 == pytest.approx(0.4)
+        assert comparison2["repo_merge_rate"] == 0.4
+
     def test_strict_gates_on_unevidenced_affirmative_claims(self):
         """--strict 的「牙齿」：说了政策却不给出处 → 红。
 
@@ -292,32 +324,6 @@ class TestIssue68MergeProbabilityBasis:
             assert "缺 evidence_url" in dirty.stdout
         finally:
             target.write_text(original, encoding="utf-8")
-
-
-        """external_merge_rate_30 是 URL 字符串时不得当合并率 (issue #68 根因)。"""
-        mp, _, comparison, meta = _estimate_merge_probability(
-            signals_neg=[], signals_pos=[], signals_neu=[],
-            tier="medium_risk",
-            repo_context={"external_merge_rate_30": "https://github.com/x/y/pulls?q=is%3Apr"},
-        )
-        assert meta["degraded"] is True
-        assert meta["basis"] == "tier_estimate"
-        assert mp == pytest.approx(0.35)  # medium_risk 档默认
-        assert comparison == {}
-
-        mp2, _, comparison2, meta2 = _estimate_merge_probability(
-            signals_neg=[], signals_pos=[], signals_neu=[],
-            tier="medium_risk",
-            repo_context={
-                "external_merge_rate_30": "https://github.com/x/y/pulls?q=is%3Apr",
-                "external_merge_rate": 0.4,
-            },
-        )
-        assert meta2["degraded"] is False
-        assert meta2["basis"] == "measured"
-        assert meta2["rate_source"] == "external_merge_rate"
-        assert mp2 == pytest.approx(0.4)
-        assert comparison2["repo_merge_rate"] == 0.4
 
     def test_signal_adjustments_still_scale_measured_base(self):
         """降级标注不改概率语义: 区分性信号的乘法仍然生效。"""

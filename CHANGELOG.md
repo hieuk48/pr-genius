@@ -8,6 +8,8 @@ description: Changelog following Keep a Changelog format + GitHub compare links
 
 ## [Unreleased]
 
+## [2.2.4] - 2026-10-20
+
 > Action comments get shorter by default. The detail never left — it moved to
 > the run page, which is where the compact comment points.
 
@@ -43,6 +45,18 @@ description: Changelog following Keep a Changelog format + GitHub compare links
 
 ### Fixed
 
+- **`react` / `react-dom` ship as runtime dependencies (#117, #129).** They were
+  declared only as `peerDependencies`, and pnpm does not install peers in a DSH
+  profile — so the external `import ... from "react"` at the top of
+  `dist/index.mjs` resolved to nothing and every `dsh plugin add pr-genius` died
+  at the `import()` step with `ERR_MODULE_NOT_FOUND`, before `apply()` could
+  register a single surface. The four surfaces were never "missing"; the module
+  never loaded.
+
+  The source fix (`ec1b7da`) landed on `main` on 2026-10-17, thirteen days after
+  the `v2.2.3` tag was cut, and **no release carried it** — 2.2.3 on npm is still
+  the pre-fix manifest. This is that release. **If you installed 2.2.3, upgrade.**
+
 - **`prgenius-core`'s wheel now ships its memory (issue #116).** The knowledge
   corpus lived only at the repository root, so `pip install prgenius-core`
   produced an amnesiac dashboard: `doctor` resolved `repo_root_source: none`
@@ -63,7 +77,6 @@ description: Changelog following Keep a Changelog format + GitHub compare links
 
 - README documents `comment_format` next to `comment_mode`, including the
   default-change note above.
-
 
 ## [2.2.3] - 2026-10-04
 

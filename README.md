@@ -134,18 +134,22 @@ read.
 pip install "prgenius-core[mcp]"     # engine + MCP server
 ```
 
-> **Honest limitation, for now.** The wheel ships the engine, not the knowledge
-> bundle — the corpus lives in this repository. Until that is fixed you need a
-> checkout and one environment variable:
+> **What the wheel actually ships.** Since #116, `prgenius-core` bundles the
+> decision-relevant corpus — `anti-patterns/`, `profiles/`, `pr-observations/`,
+> `docs/policies/`, `locale/` — as `prgenius/data/`, and root resolution finds it
+> without a checkout. A clone and `PRGENIUS_REPO_ROOT` are **overrides**, not
+> prerequisites.
+>
+> `success-patterns/` (~2.7 MB) is deliberately **not** bundled: the scorer never
+> consults it (#69), so it would triple the wheel without changing a decision.
+> `doctor` reports `success_patterns_installed: false` rather than pretending.
 >
 > ```bash
-> git clone https://github.com/zsxh1990/pr-genius.git
-> export PRGENIUS_REPO_ROOT="$PWD/pr-genius"
-> prgenius-core doctor      # tells you exactly what it found and what it did not
+> prgenius-core doctor      # where the knowledge came from, what it found, what it did not
 > ```
 >
-> `doctor` is the first thing worth running. It never lies about what is
-> missing.
+> `doctor` is the first thing worth running. It reports `repo_root_source` and the
+> per-corpus counts on its first lines, and it never lies about what is missing.
 
 ```bash
 python3 -m prgenius analyze "feat: add feature" --repo org/repo --body "Fixes #123"
@@ -311,6 +315,28 @@ or from title keywords when no `diff_stat` is given.
 
 ## 🧩 DSH Plugin
 
+> **Read this before installing.** The five surfaces are registered by **runtime
+> probing**, not by a known-good map: the authoritative DSH slot catalog is not
+> obtainable (`gh api repos/deepseek-ai/deepseek-harness-sdk` is 404), and the
+> pinned SDK (42 keys) and upstream `master` (92 keys) disagree about the
+> right-hand pane. So `apply()` tries each candidate slot and registers into
+> whichever the host accepts — and if the host accepts none of them, **the
+> install looks empty and there is nothing obviously wrong**. That is exactly how
+> "empty shell install" shipped eight times in five weeks (#86, #90, #95, #97,
+> #98, #100, #101, #117).
+>
+> Two things now make it survivable: a total registration failure logs an
+> **error** (not a warn) naming the surfaces and the slots that were tried, and
+> `service.describe().surfaces` reports the outcome structurally so a host or a
+> test can read it instead of scraping logs (#131).
+>
+> Still unverified: whether any surface actually **renders**. That needs a real
+> DSH web host — which is what [#102](https://github.com/zsxh1990/pr-genius/issues/102)
+> is recruiting for. The contract gate (`scripts/check_dsh_plugin_contract.py`,
+> 27/27) and `npm run smoke:release` prove registration *shape*, not rendering;
+> both say so themselves. Full scoring:
+> [`docs/maturity-self-assessment.md`](docs/maturity-self-assessment.md).
+
 PR Genius runs as a DSH (Cordis) plugin inside the DeepSeek Harness.
 
 ```bash
@@ -324,15 +350,10 @@ Five surfaces: sidebar footer action (dashboard), conversation tab, right-hand
 panel, `/prgenius` command, and settings. The dashboard surface shows knowledge
 base scale, install health, and your in-flight PRs.
 
-> **Honesty note.** The DSH plugin has been verified for TypeScript
-> compilation, unit tests, and static contract conformance
-> (`scripts/check_dsh_plugin_contract.py`, 27/27). It **has** been run in a live
-> DSH runtime — that is how issues #100, #101 and #103 were found. What is
-> still unverified is the **current** code: the fixes shipped since 2.1.5 have
-> not been re-verified in a host, and the version matrix in
-> [`docs/compatibility.md`](docs/compatibility.md) is entirely unrun. Treat the
-> plugin as **not yet confirmed working end to end**. See
-> [`docs/maturity-self-assessment.md`](docs/maturity-self-assessment.md).
+> **Compatibility.** Verified for TypeScript compilation, unit tests and static
+> contract conformance. Fixes shipped since 2.1.5 have **not** been re-verified
+> in a host, and the version matrix in
+> [`docs/compatibility.md`](docs/compatibility.md) is entirely unrun.
 
 ---
 

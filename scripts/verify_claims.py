@@ -91,6 +91,49 @@ def _live_pyproject_version() -> str:
     return m.group(1) if m else ""
 
 
+def _live_contract_gate_count() -> int:
+    """Run the DSH plugin contract gate and parse its blocking-check count.
+
+    Why the gate has to measure this rather than trust a literal: the count moves
+    whenever checks are added or retired (#117 took it 27 -> 29, #131 trimmed it
+    back), and the docs kept saying 27/27 in three places — including an expected
+    output line inside a block titled "可复跑" (#136). A hardcoded number in prose
+    is a claim with no writer; this makes the gate the one that notices.
+    """
+    script = REPO_ROOT / "scripts" / "check_dsh_plugin_contract.py"
+    if not script.exists():
+        return -1
+    try:
+        out = subprocess.run(
+            [sys.executable, str(script)],
+            capture_output=True, text=True, timeout=120, cwd=str(REPO_ROOT),
+        )
+    except Exception:
+        return -1
+    m = re.search(r"(\d+)\s*/\s*\d+\s+blocking checks passed", out.stdout + out.stderr)
+    return int(m.group(1)) if m else -1
+
+
+_CONTRACT_CLAIM = re.compile(r"(\d+)\s*/\s*\d+\s+blocking checks")
+_CONTRACT_CLAIM_CN = re.compile(r"契约符合性[^\d]{0,20}(\d+)\s*/\s*\d+")
+
+
+def _doc_contract_claims() -> list[tuple[str, int]]:
+    """Every place a document states a blocking-check count, as (where, claimed)."""
+    found: list[tuple[str, int]] = []
+    for rel in ("README.md", "docs/maturity-self-assessment.md"):
+        path = REPO_ROOT / rel
+        if not path.exists():
+            continue
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            for rx in (_CONTRACT_CLAIM, _CONTRACT_CLAIM_CN):
+                m = rx.search(line)
+                if m:
+                    found.append((f"{rel}:{lineno}", int(m.group(1))))
+    return found
+
+
+
 # --- The claims ---------------------------------------------------------
 
 # The README headline currently has two valid forms:
@@ -218,6 +261,24 @@ def main() -> int:
                 f"CHANGELOG top entry is {cl_v}, but __init__.py is {init_v}"
             )
 
+    # 5. DSH contract-gate count claimed in prose must equal the live gate (#136).
+    #    The number moves whenever checks are added or retired, so a literal in a
+    #    doc has no writer. Measure, then refuse to release while they disagree.
+    live_gate = _live_contract_gate_count()
+    claims = _doc_contract_claims()
+    if live_gate < 0 and claims:
+        errors.append(
+            "scripts/check_dsh_plugin_contract.py did not report a blocking-check "
+            f"count, but the docs claim one at: {[c[0] for c in claims]}"
+        )
+    for where, claimed in claims:
+        if live_gate >= 0 and claimed != live_gate:
+            errors.append(
+                f"{where} claims {claimed} blocking checks, but "
+                f"check_dsh_plugin_contract.py reports {live_gate}. "
+                f"Update the doc — or stop stating a number that has no writer."
+            )
+
     # --- Report ---
     if errors:
         print("❌ verify_claims.py — drift detected:")
@@ -235,6 +296,7 @@ def main() -> int:
     print(f"  - version pyproject:        {pyproject_v}")
     if cl_match:
         print(f"  - CHANGELOG top:            [{cl_match.group(1)}]")
+    print(f"  - contract gate claims:     {len(claims)} doc mention(s), live={live_gate}")
     return 0
 
 

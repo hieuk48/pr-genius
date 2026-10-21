@@ -332,9 +332,9 @@ or from title keywords when no `diff_stat` is given.
 >
 > Still unverified: whether any surface actually **renders**. That needs a real
 > DSH web host — which is what [#102](https://github.com/zsxh1990/pr-genius/issues/102)
-> is recruiting for. The contract gate (`scripts/check_dsh_plugin_contract.py`,
-> 27/27) and `npm run smoke:release` prove registration *shape*, not rendering;
-> both say so themselves. Full scoring:
+> is recruiting for. The contract gate (`scripts/check_dsh_plugin_contract.py`
+> — it prints its own blocking-check count) and `npm run smoke:release` prove
+> registration *shape*, not rendering; both say so themselves. Full scoring:
 > [`docs/maturity-self-assessment.md`](docs/maturity-self-assessment.md).
 
 PR Genius runs as a DSH (Cordis) plugin inside the DeepSeek Harness.

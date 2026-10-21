@@ -14,6 +14,8 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from .diff_scan import scan_diff
+
 logger = logging.getLogger(__name__)
 
 # ============================================================
@@ -1248,6 +1250,7 @@ def _assemble_output(
     repo: str,
     title: str,
     tier: str,
+    diff_scan: Optional[dict] = None,
     signals_pos: List[dict],
     signals_neg: List[dict],
     signals_neu: List[dict],
@@ -1319,6 +1322,9 @@ def _assemble_output(
         "repo_context": repo_context,
         "comparison": comparison,
         # v1.6.3: PR 大小和影响评估
+        # issue #133: diff 扫描结果。diff_scanned=false 说明压根没给 diff，
+        # 不是"看了没发现" —— 两者必须分得开。
+        "diff_scan": diff_scan or {"diff_scanned": False, "finding_count": 0, "findings": []},
         "pr_size": pr_size,
         "pr_size_label": pr_size_label,
         "impact_score": impact_score,
@@ -1344,6 +1350,7 @@ def analyze_pr(
     author_association: str = "NONE",
     mergeable: str = "MERGEABLE",
     diff_stat: str = "",
+    diff: Optional[str] = None,
 ) -> dict:
     """分析 PR 并生成结构化改进建议
 
@@ -1376,6 +1383,9 @@ def analyze_pr(
     is_bot = is_bot_author(author)
     require_issue_first = _check_require_issue_first(repo, repo_root)
     anti_matches = check_anti_patterns(title, description, repo, repo_root, body=body)
+    # issue #133: diff 里的安装面 / 远程执行 / 密钥形状。没给 diff 就是没看，
+    # 不是看了没发现 —— 由 diff_scan.diff_scanned 说清，不在措辞里含糊。
+    diff_scan_result = scan_diff(diff)
     # issue #45: 结构性检查 (静态, 不执行 PR 代码) — 命中会升级对应反模式的
     # severity / 标记需人工复核，覆盖表层关键词抓不到的缺陷形状
     from .structural import check_structural_patterns, merge_structural_matches
@@ -1414,6 +1424,7 @@ def analyze_pr(
 
     # ---- Phase 4: 输出组装 ----
     result = _assemble_output(
+        diff_scan=diff_scan_result,
         repo=repo, title=title, tier=tier,
         signals_pos=signals_pos, signals_neg=signals_neg, signals_neu=signals_neu,
         checklist=checklist, anti_matches=anti_matches, repo_context=repo_context,

@@ -22,7 +22,7 @@ mcp-name: io.github.zsxh1990/pr-genius
 other people's repositories, where you have no tracker, no standup, and no
 clue.
 
-It is **not** a code reviewer. It never reads your diff and it will never tell
+It is **not** a code reviewer. By default it never reads your diff, and it will never tell
 you your code is correct. There are good tools for that, and this is not one of
 them.
 
@@ -212,7 +212,10 @@ already in: sidebar action, session tab, right-hand panel, settings, and
 
 Stated plainly, because the rest of this page is worthless if these are fuzzy:
 
-- **It will not tell you your code is correct.** It does not read your diff.
+- **It will not tell you your code is correct.** It does not judge your logic.
+  You can hand it a diff (`--diff`) and it will flag install commands, downloads
+  piped into a shell, and secret-shaped strings — a keyword pass, not a review.
+  Without one, it looks at the summary counts only.
 - **It will not write or send anything on your behalf** unless you pass an
   explicit `--confirm`. Every mutating command is dry-run by default.
 - **It will not phone home.** Analysis is local: no LLM, no API key, no network
@@ -307,9 +310,17 @@ composite action; see the [docs index](docs/index.md) for the `docker://` form.
 `prgenius_doctor`. All annotated `readOnlyHint: true` — the surface cannot
 write to GitHub.
 
-`diff_stat` is a summary string (`git diff --stat` output). Summary counts
-only: the diff body is **not** parsed. Size and impact come from those counts,
-or from title keywords when no `diff_stat` is given.
+`diff_stat` is a summary string (`git diff --stat` output). Size and impact come
+from those counts, or from title keywords when no `diff_stat` is given.
+
+`diff` (optional) is the unified diff body. When you pass one, a keyword pass over
+its **added** lines reports three families: install commands (the typosquat
+surface, with the package names), downloads piped into an interpreter, and
+secret-shaped strings (reported truncated, never echoed). It is string matching —
+it cannot tell you whether a package exists on PyPI and it makes no network call.
+The verdict carries `diff_scan.diff_scanned`, so 'looked and found nothing' never
+reads as 'did not look'. Pass no diff and nothing about the current behaviour
+changes.
 
 ---
 

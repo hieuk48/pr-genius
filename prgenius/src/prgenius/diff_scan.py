@@ -23,6 +23,7 @@ rather than echoing it. The negative tests matter more than the positive ones.
 from __future__ import annotations
 
 import re
+import shlex
 from typing import Any, Dict, List
 
 # ── 命令面：一次新增的安装动作就是一次新的供应链入口 ──────────────────────────
@@ -86,6 +87,19 @@ def _packages_for(command: str, line: str) -> List[str]:
             break
     names: List[str] = []
     for word in words:
+        # Strip shell quoting before anything else. `pip install 'uv[extra]==0.5'`
+        # whitespace-splits into `'uv[extra]==0.5'`; without this the reported
+        # distribution name is `'uv` — leading quote intact — and the one field a
+        # typosquat check exists to produce cannot be looked up by exact name.
+        # `shlex.split` on a single token also handles backslash escapes and the
+        # `a'b'c` adjacency; on ordinary tokens it is a no-op, so this is strictly
+        # a superset of the previous behaviour.
+        try:
+            unquoted = shlex.split(word)
+            if unquoted:
+                word = unquoted[0]
+        except ValueError:
+            pass  # unbalanced quote — keep the raw token rather than dropping it
         if word.startswith("-"):
             continue  # flag / option
         if word in {"install", "add", "get"}:

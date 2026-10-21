@@ -8,6 +8,47 @@ description: Changelog following Keep a Changelog format + GitHub compare links
 
 ## [Unreleased]
 
+## [2.2.5] - 2026-10-21
+
+> The point of this release is one thing: 2.2.4 shipped before the fix for
+> "installs but registers nothing, and says so quietly" landed. If you are
+> debugging an empty DSH sidebar on 2.2.4, the error you want is in here.
+
+### Fixed
+
+- **A DSH install that registers no surface now says so out loud (#131).** When
+  the host provides `slots` but accepts none of the four UI surfaces, `apply()`
+  logs an **error** naming each surface and the candidate slots that were tried,
+  instead of a warn per surface. A warn per surface is how "registered
+  everything" and "registered nothing" looked almost identical from outside —
+  which is how "empty shell install" shipped eight times in five weeks
+  (#86, #90, #95, #97, #98, #100, #101, #117).
+
+  The slash command is deliberately **not** counted in that test: it runs on
+  `ctx.command`, not a slot, so a working `/prgenius` must not be able to hide
+  "all four UI surfaces went missing".
+
+  Registration outcome is now readable without scraping logs: `describe().surfaces`
+  reports `expected` / `registered[]` / `failed[]`, with the seat each surface
+  landed on and the candidate slots the host refused.
+
+  **2.2.4 does not have this.** The fix (`a2bf946`) landed after the 2.2.4 tag
+  was cut, so the published package predates it — the same shape as #129. This
+  release is that gap closed. Verified against the published tarball, not against
+  a checkout.
+
+- **The issue #68 contract lock is a test again (#125).** PR #124 replaced the
+  `def` line of `test_url_string_rate_is_not_treated_as_measured` and left the old
+  body behind, so the code sat at the tail of `test_strict_gates_…` where it was
+  evaluated and discarded. pytest never runs orphaned statements, so the suite
+  stayed green while the regression guard was gone. Restored as its own test.
+
+### Docs
+
+- The README no longer claims the wheel ships no knowledge — `prgenius-core` has
+  bundled the decision-relevant corpus since #116. A checkout and
+  `PRGENIUS_REPO_ROOT` are overrides, not prerequisites.
+
 ## [2.2.4] - 2026-10-20
 
 > Action comments get shorter by default. The detail never left — it moved to

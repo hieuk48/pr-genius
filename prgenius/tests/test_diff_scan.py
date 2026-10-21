@@ -48,6 +48,31 @@ class TestInstallSurface:
         packages = result["findings"][0]["packages"]
         assert "-r" not in packages, f"flags leaked into packages: {packages}"
 
+    def test_quoted_package_names_are_unquoted(self):
+        """`pip install 'uv[extra]==0.5'` must report `uv`, not `'uv`.
+
+        This is the field the typosquat check exists to produce, so a leading
+        quote makes it unlookupable by exact name — the shell quoting has to come
+        off before the version/extras trimming does.
+        """
+        for line, want in (
+            ("+pip install 'uv[extra]==0.5.0'", "uv"),
+            ('+pip install "requests>=2.0"', "requests"),
+            ("+pip install 'never-existing-package-xyz'", "never-existing-package-xyz"),
+        ):
+            result = scan_diff(_unified(line))
+            assert result["finding_count"] == 1, f"{line!r} should fire"
+            packages = result["findings"][0]["packages"]
+            assert want in packages, f"{line!r} -> {packages}, expected {want!r} among them"
+            assert not any(p[:1] in {"'", '"'} for p in packages), (
+                f"a quote leaked into a package name: {packages}"
+            )
+
+    def test_an_unbalanced_quote_does_not_drop_the_command(self):
+        """A malformed quote must not swallow the finding — the command is the point."""
+        result = scan_diff(_unified("+pip install 'unterminated"))
+        assert result["finding_count"] == 1, "the install surface is still worth reporting"
+
     def test_version_pins_and_extras_reduce_to_the_distribution_name(self):
         result = scan_diff(_unified("+pip install foo==1.2.3 bar[extra]"))
         packages = result["findings"][0]["packages"]

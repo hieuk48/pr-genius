@@ -13,7 +13,7 @@
  * 编译、单元测试与静态契约自洽；渲染与运行时行为需 DSH 运行时验证，本机未执行。
  */
 import type { Context } from '@deepseek-ai/cordis'
-import { planRegistrations, SURFACE_IDS } from './ui/surfaces.ts'
+import { planRegistrations, SURFACE_IDS, SURFACE_PLAN } from './ui/surfaces.ts'
 // 导入 client 层是让它进 bundle 的唯一途径 —— 此前它只是躺在 src/client/ 里
 // 未被引用，所以 tsc 通过、bundle 里却没有它（issue #90）。
 import { surfaceComponents, type AdvisorFace } from './client/AdvisorPanel.tsx'
@@ -74,6 +74,36 @@ export interface PrGeniusRuntimeInfo {
   }
   locale: string
   riskFilter: RiskTier
+  /**
+   * 四界面 + 命令面的注册结果（apply() 跑完后才有值）。
+   *
+   * 为什么要有这个字段：空壳安装（四个面一个都没注册上）连续发生过八次
+   * （#86/#90/#95/#97/#98/#100/#101/#117），每次都靠单测说"已修"、没人真跑过。
+   * 日志里的一条 warn 藏得住，describe() 里的结构化结果藏不住 —— 宿主可以直接打出来，
+   * 测试可以直接断言。见 issue #131。
+   */
+  surfaces: SurfaceReport | null
+}
+
+/** 一个界面的注册结局。`registered` 为假时 `candidates` 是试过的落点。 */
+export interface SurfaceReportEntry {
+  id: string
+  registered: boolean
+  /** 实际被宿主接受的 slot key；命令面为 `ctx.command`。 */
+  seat?: string
+  /** 试过的候选落点（宿主一个都没认时）。 */
+  candidates?: string[]
+  /** 失败原因的人话版本。 */
+  reason?: string
+}
+
+export interface SurfaceReport {
+  /** 计划注册的界面数（4 个 slot 面 + 1 个命令面）。 */
+  expected: number
+  registered: SurfaceReportEntry[]
+  failed: SurfaceReportEntry[]
+  /** 整个 slots 服务是否可用；false 说明本会话没有 web 运行时。 */
+  slotsAvailable: boolean
 }
 
 /** 插件服务：配置投影 + 通往 Python 分析引擎的调用口。 */
@@ -96,10 +126,12 @@ export interface PrGeniusServiceDeps {
   kb: KbLayout
   version: string
   invoker: McpInvoker
+  /** apply() 在注册结束后回填；describe() 原样透出，供宿主/测试读。 */
+  getSurfaceReport?: () => SurfaceReport | null
 }
 
 export function createPrGeniusService(deps: PrGeniusServiceDeps): PrGeniusService {
-  const { config, kb, version, invoker } = deps
+  const { config, kb, version, invoker, getSurfaceReport } = deps
   return {
     config,
     kb,
@@ -126,6 +158,7 @@ export function createPrGeniusService(deps: PrGeniusServiceDeps): PrGeniusServic
         },
         locale: config.locale,
         riskFilter: config.riskFilter,
+        surfaces: getSurfaceReport ? getSurfaceReport() : null,
       }
     },
     callTool(tool: string, args: Record<string, unknown> = {}) {
@@ -234,10 +267,18 @@ export function apply(ctx: Context, config: Config): void {
     },
     (line) => logger.warn('[mcp:stderr] %s', line),
   )
+  // 注册结果由下面的循环回填；describe() 通过这个闭包读到它。
+  const surfaceReport: SurfaceReport = {
+    expected: SURFACE_PLAN.length,
+    registered: [],
+    failed: [],
+    slotsAvailable: false,
+  }
   const service = createPrGeniusService({
     config: resolved,
     kb,
     version: meta.version,
+    getSurfaceReport: () => surfaceReport,
     invoker,
   })
 
@@ -277,8 +318,18 @@ export function apply(ctx: Context, config: Config): void {
         )
     })
     surfaceDisposers.push(() => logger.info('command %s unregistered', SURFACE_IDS.command))
+    surfaceReport.registered.push({
+      id: SURFACE_IDS.command,
+      registered: true,
+      seat: 'ctx.command',
+    })
     logger.info('surface ready: %s (slash command)', SURFACE_IDS.command)
   } else {
+    surfaceReport.failed.push({
+      id: SURFACE_IDS.command,
+      registered: false,
+      reason: 'ctx.command unavailable',
+    })
     logger.warn('ctx.command unavailable — slash surface not registered')
   }
 
@@ -288,6 +339,7 @@ export function apply(ctx: Context, config: Config): void {
     inject?: (slot: string, factory: () => unknown) => () => void
     register?: (def: unknown, component: unknown) => () => void
   }>(ctx, 'slots')
+  surfaceReport.slotsAvailable = Boolean(slotsService?.inject && slotsService?.register)
   if (slotsService?.inject && slotsService?.register) {
     // 运行时探测：候选落点里挑宿主真的提供的那个。
     // 不静态硬编码争议 key —— pinned SDK 与 upstream 的 catalog 不一致
@@ -312,6 +364,7 @@ export function apply(ctx: Context, config: Config): void {
             slotsService.register!(def, COMPONENTS[surface.id] ?? null))
           surfaceDisposers.push(dispose)
           logger.info('surface registered: %s -> %s', surface.id, key)
+          surfaceReport.registered.push({ id: surface.id, registered: true, seat: key })
           registered = true
           break
         } catch (err) {
@@ -320,12 +373,47 @@ export function apply(ctx: Context, config: Config): void {
       }
       if (!registered) {
         logger.warn('surface %s: no candidate slot accepted; not registered (宁缺勿假): %j', surface.id, candidates)
+        surfaceReport.failed.push({
+          id: surface.id,
+          registered: false,
+          candidates: candidates.filter(Boolean),
+          reason: 'no candidate slot accepted by the host',
+        })
       }
     }
   } else {
     logger.warn(
       'ctx.slots unavailable — dashboard / tab / panel / settings surfaces not registered ' +
         '(need a DSH web host; this session has no runtime)',
+    )
+  }
+
+  // 空壳安装的告警（issue #131）：slots 在、四个面一个都没注册上 —— 这才是
+  // "装了但什么都没有"的形状，也是 #86/#90/#95/#97/#98/#100/#101/#117 连续八次
+  // 被单测说"已修"却没人看见的原因。warn 藏得住，error 不该藏。
+  //
+  // 刻意**不**在 slots 不可用时升成 error：那说明本会话没有 web 运行时（CLI 用法），
+  // 不是注册失败。两种情况在 describe().surfaces 里都是结构化可读的。
+  // 只数 UI（slot）面：命令面走 ctx.command，它注册成功不能掩盖"四个 UI 面全灭"。
+  const isUi = (e: SurfaceReportEntry) => e.id !== SURFACE_IDS.command
+  const uiRegistered = surfaceReport.registered.filter(isUi)
+  const slotFailures = surfaceReport.failed.filter(isUi)
+  if (surfaceReport.slotsAvailable && uiRegistered.length === 0) {
+    logger.error(
+      'pr-genius: NO SURFACES REGISTERED — the plugin loaded but the host accepted none of the %d ' +
+        'UI surfaces. This install will look empty. Tried: %s. ' +
+        'Report the host/SDK version and these candidate slots to ' +
+        'https://github.com/zsxh1990/pr-genius/issues/102',
+      surfaceReport.expected - 1,
+      slotFailures.map((f) => `${f.id}[${(f.candidates ?? []).join('|') || 'none'}]`).join(' ') ||
+        '(none attempted)',
+    )
+  } else if (slotFailures.length > 0) {
+    logger.warn(
+      'pr-genius: %d of %d UI surfaces did not register: %s',
+      slotFailures.length,
+      surfaceReport.expected - 1,
+      slotFailures.map((f) => f.id).join(', '),
     )
   }
 

@@ -134,6 +134,33 @@ def _doc_contract_claims() -> list[tuple[str, int]]:
 
 
 
+def _slot_catalog_alignment() -> tuple[bool, str]:
+    """Run scripts/verify-slot-keys.mjs and report whether the catalog snapshot
+    matches its own authority (#139).
+
+    It was failing on main for weeks while every release still tagged: a gate
+    nobody runs is not a gate. This makes a stale snapshot refuse the release the
+    same way a version mismatch does.
+    """
+    script = REPO_ROOT / "scripts" / "verify-slot-keys.mjs"
+    if not script.exists():
+        return False, "scripts/verify-slot-keys.mjs is missing"
+    try:
+        out = subprocess.run(
+            ["node", str(script), "--check"],
+            capture_output=True, text=True, timeout=180, cwd=str(REPO_ROOT),
+        )
+    except Exception as exc:  # noqa: BLE001 - the message is the product here
+        return False, f"could not run verify-slot-keys.mjs: {exc}"
+    text = out.stdout + out.stderr
+    if out.returncode != 0:
+        tail = "\n".join(text.splitlines()[-6:])
+        return False, f"verify-slot-keys.mjs exit {out.returncode}: {tail}"
+    m = re.search(r"keys\s*:\s*(\d+)", text)
+    return True, f"aligned, {m.group(1) if m else '?'} keys"
+
+
+
 # --- The claims ---------------------------------------------------------
 
 # The README headline currently has two valid forms:
@@ -279,6 +306,13 @@ def main() -> int:
                 f"Update the doc — or stop stating a number that has no writer."
             )
 
+    # 6. Slot-catalog snapshot must match its authority (#139). It was red on main
+    #    for weeks while releases kept tagging — the 宁缺勿假 gate silently declines
+    #    seats the host actually offers once the table falls behind.
+    aligned, detail = _slot_catalog_alignment()
+    if not aligned:
+        errors.append(f"slot catalog snapshot is not aligned: {detail}")
+
     # --- Report ---
     if errors:
         print("❌ verify_claims.py — drift detected:")
@@ -297,6 +331,7 @@ def main() -> int:
     if cl_match:
         print(f"  - CHANGELOG top:            [{cl_match.group(1)}]")
     print(f"  - contract gate claims:     {len(claims)} doc mention(s), live={live_gate}")
+    print(f"  - slot catalog:             {detail}")
     return 0
 
 

@@ -23,11 +23,11 @@
 export const CATALOG_PROVENANCE = {
   repo: 'deepseek-ai/deepseek-harness',
   path: 'packages/extensions/cordis-client-runner/src/client/slot-catalog.ts',
-  blobSha: '7c8f7af10ff12104636f54a828556c4a1fd9d208',
+  blobSha: 'f8e09d2e99335793',
   commit: '2db0c83e867c23918963ae8314630887d316e79d',
   commitDate: '2026-10-02T19:19:43Z',
-  fetchedAt: '2026-10-03',
-  keyCount: 92,
+  fetchedAt: '2026-10-22',
+  keyCount: 100,
 } as const
 
 /** 上游 catalog 里存在的全部 slot key（生成物，勿手改；重跑 verify 脚本刷新）。 */
@@ -35,8 +35,12 @@ export const CONFIRMED_SLOT_KEYS: readonly string[] = [
   'conversation.approval.detail',
   'conversation.chat.assistant-actions',
   'conversation.chat.commandview',
+  'conversation.chat.flow',
+  'conversation.chat.message.images',
   'conversation.chat.node',
+  'conversation.chat.reasoning.body',
   'conversation.chat.turnTail',
+  'conversation.chat.user.images',
   'conversation.composer',
   'conversation.composer.bar',
   'conversation.composer.dock',
@@ -44,6 +48,7 @@ export const CONFIRMED_SLOT_KEYS: readonly string[] = [
   'conversation.header.leading',
   'conversation.hero.agentPreset',
   'conversation.hero.brand.mark',
+  'conversation.hero.options',
   'conversation.hero.workspace',
   'conversation.hero.workspace.directoryFlow',
   'conversation.input.activity',
@@ -51,11 +56,11 @@ export const CONFIRMED_SLOT_KEYS: readonly string[] = [
   'conversation.input.dock',
   'conversation.input.left',
   'conversation.input.model',
+  'conversation.input.model.label',
   'conversation.input.overlay',
   'conversation.input.permission',
   'conversation.input.plan',
   'conversation.input.right',
-  'conversation.message.images',
   'conversation.plan-review.actions',
   'conversation.session',
   'conversation.session.header',
@@ -64,6 +69,7 @@ export const CONFIRMED_SLOT_KEYS: readonly string[] = [
   'conversation.session.header.lineage',
   'conversation.session.header.utilities',
   'conversation.trajectory.images',
+  'conversation.user.text.node',
   'conversation.view',
   'deliverables.file.actions',
   'deliverables.review.file.actions',
@@ -77,6 +83,7 @@ export const CONFIRMED_SLOT_KEYS: readonly string[] = [
   'plugins.detail.section',
   'plugins.item',
   'plugins.row.config',
+  'plugins.tab',
   'rightbar',
   'rightbar.session',
   'root',
@@ -124,6 +131,7 @@ export const CONFIRMED_SLOT_KEYS: readonly string[] = [
   'tool.call.images',
   'tool.call.toolview',
   'tool.view.cordis',
+  'workspace.toast',
 ]
 
 const CONFIRMED: ReadonlySet<string> = new Set(CONFIRMED_SLOT_KEYS)

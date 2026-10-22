@@ -95,6 +95,10 @@ export interface SurfaceReportEntry {
   candidates?: string[]
   /** 失败原因的人话版本。 */
   reason?: string
+  /** 我们自己的 catalog 快照里没有这些 key —— 是我们的表，不是宿主。 */
+  unknownToTable?: string[]
+  /** key 我们认识，但宿主拒绝了。 */
+  hostRefused?: string[]
 }
 
 export interface SurfaceReport {
@@ -351,13 +355,27 @@ export function apply(ctx: Context, config: Config): void {
         ? ((surface.seat as { candidates?: string[] }).candidates as string[])
         : [surface.seat].filter(Boolean).map((x) => (x as { key?: string }).key ?? '')
       // 真探测：逐个候选试注册，宿主不认就换下一个。不靠"key 非空"这种假探测。
+      //
+      // 两种失败必须说不同的话（issue #139）：
+      //   unknown_to_table — 我们的 catalog 快照里没有这个 key。快照落后时这会假装
+      //                      成"宿主不给座位"，而其实座位是有的、是我们没登记。
+      //   host_refused     — key 我们认识，宿主不要。
+      // 「宁缺勿假」仍然成立：表里没有的一律不注册。但报错必须让人分得清是谁拒绝的，
+      // 否则 #102 那种真机报告会把快照落后读成宿主故障。
       let registered = false
+      const unknownToTable: string[] = []
+      const hostRefused: string[] = []
       for (const key of candidates) {
         if (!key) continue
         try {
           const def = slotRegisterDef(key, surface.id, surface.id)
           if (!def) {
-            logger.warn('surface %s: no verified contract for slot %s; skipping', surface.id, key)
+            unknownToTable.push(key)
+            logger.warn(
+              'surface %s: slot %s is not in pr-genius\'s own catalog snapshot, so it is not registered — ' +
+                'this is our table, not your host. If the host does offer it, our snapshot is stale (#139).',
+              surface.id, key,
+            )
             continue
           }
           const dispose = slotsService.inject(key, () =>
@@ -368,16 +386,29 @@ export function apply(ctx: Context, config: Config): void {
           registered = true
           break
         } catch (err) {
-          logger.warn('surface %s: slot %s rejected (%s); trying next candidate', surface.id, key, String(err))
+          hostRefused.push(key)
+          logger.warn('surface %s: slot %s rejected by the host (%s); trying next candidate', surface.id, key, String(err))
         }
       }
       if (!registered) {
-        logger.warn('surface %s: no candidate slot accepted; not registered (宁缺勿假): %j', surface.id, candidates)
+        // 宁缺勿假：一个都不注册。但要把原因写清楚。
+        const allUnknown = hostRefused.length === 0 && unknownToTable.length > 0
+        const reason = allUnknown
+          ? 'every candidate is absent from pr-genius\'s catalog snapshot — this is our table, not the host'
+          : hostRefused.length > 0
+            ? 'the host refused every candidate slot we know'
+            : 'no candidate slot to try'
+        logger.warn(
+          'surface %s: not registered (%s). candidates=%j known_to_table=%j unknown_to_table=%j',
+          surface.id, reason, candidates, hostRefused, unknownToTable,
+        )
         surfaceReport.failed.push({
           id: surface.id,
           registered: false,
           candidates: candidates.filter(Boolean),
-          reason: 'no candidate slot accepted by the host',
+          reason,
+          unknownToTable,
+          hostRefused,
         })
       }
     }

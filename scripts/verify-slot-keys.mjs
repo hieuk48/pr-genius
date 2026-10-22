@@ -23,6 +23,7 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
+import { createRequire } from 'node:module'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(HERE, '..')
@@ -184,12 +185,44 @@ if (!existsSync(vitestBin)) {
     EXIT_COULD_NOT_RUN,
   )
 }
+// vitest 二进制在、但模块解析不了（没跑 pnpm install 时 react 不在）——那不是
+// catalog 的结论，是环境没准备好。第一版只查了二进制，于是 import 失败仍被归到
+// exit 2，一个干净 checkout 的人会照着「快照与权威不一致」去找不存在的 bug。
+// （PR #146 复核指出的漏点。）
 try {
-  execFileSync(vitestBin, ['run', testFile, '--reporter=verbose'], {
-    cwd: ROOT,
-    stdio: 'inherit',
-  })
+  createRequire(import.meta.url).resolve('react')
 } catch {
+  fail(
+    'alignment test could not run — react is not installed. ' +
+      'Run `pnpm install` first. This is an environment problem, not a catalog mismatch.',
+    EXIT_COULD_NOT_RUN,
+  )
+}
+
+let vitestOut = ''
+try {
+  vitestOut = execFileSync(vitestBin, ['run', testFile, '--reporter=verbose'], {
+    cwd: ROOT,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+} catch (err) {
+  vitestOut = String(err.stdout ?? '') + String(err.stderr ?? '')
+  // 收集期失败（import / 模块解析 / 转译）与断言失败是两件事。前者归 3，后者归 2 ——
+  // 否则「测试跑不起来」会被读成「快照不对」，把人支去改 catalog。
+  const collectionFailure =
+    /Failed to resolve entry|Cannot find module|Failed Suites|ERR_MODULE_NOT_FOUND|Transform failed/i.test(
+      vitestOut,
+    )
+  console.error(vitestOut.split('\n').slice(-12).join('\n'))
+  if (collectionFailure) {
+    fail(
+      'alignment test could not run — the test module failed to load. ' +
+        'This is an environment problem, not a catalog mismatch.',
+      EXIT_COULD_NOT_RUN,
+    )
+  }
   fail('alignment test FAILED — the injected keys do not all exist in the authority')
 }
+console.log(vitestOut.split('\n').filter((l) => /Tests |Test Files |passed|failed/.test(l)).join('\n'))
 console.log('\nverify-slot-keys: OK — every injected key exists in the authority.')

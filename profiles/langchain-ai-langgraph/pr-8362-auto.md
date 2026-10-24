@@ -6,9 +6,11 @@ repo: langchain-ai/langgraph
 pr_number: 8362
 pr_url: https://github.com/langchain-ai/langgraph/pull/8362
 author: ccurme
-final_status: open
+final_status: closed-merged
+merged_at: '2026-07-21T19:04:05Z'
+closed_at: '2026-07-21T19:04:05Z'
 opened_at: '2026-07-17T14:09:53Z'
-verified_at: '2026-07-19T20:30:00Z'
+verified_at: '2026-07-21T19:04:05Z'
 evidence_urls:
 - https://github.com/langchain-ai/langgraph/pull/8362
 confidence: medium
@@ -31,7 +33,7 @@ rounds:
   blocker: null
   resolution: closed
   commit: null
-  timestamp: '2026-07-19T20:30:00Z'
+  timestamp: '2026-07-21T19:04:05Z'
 close_decision:
   status: close
   reason: Closed by maintainer
@@ -41,7 +43,7 @@ close_decision:
 
 # feat(langgraph): expose `trace_inputs` on `add_node`
 
-PR #8362 by ccurme — open.
+PR #8362 by ccurme — closed-merged (2026-07-21).
 
 Signals: is_feature, has_reviews
 

@@ -6,7 +6,7 @@ pr_number: 282
 pr_url: https://github.com/punkpeye/fastmcp/pull/282
 repo: punkpeye/fastmcp
 author: zsxh1990
-status: closed
+status: closed-not-merged
 opened_at: 2026-06-28
 closed_at: 2026-07-24
 last_activity: 2026-07-24
@@ -66,21 +66,37 @@ rounds:
     blocker: "Prettier formatting issue"
     resolution: "Fixed prettier formatting"
     timestamp: "2026-06-28T09:39:00Z"
+  - round: 3
+    action: decision
+    delta:
+      kind: no_code_change
+      value: "PR 已关闭（未合并），无代码变更"
+      verified_at: "2026-07-24T09:33:50Z"
+      evidence_urls:
+        - https://github.com/punkpeye/fastmcp/pull/282
+        - https://api.github.com/repos/punkpeye/fastmcp/pulls/282
+      confidence: high
+    response_time_h: 0
+    maintainer_action: "maintainer closed the PR"
+    bot_review: []
+    blocker: null
+    resolution: "GitHub API 复核：state=closed, merged=false"
+    timestamp: "2026-07-24T09:33:50Z"
 close_decision:
-  status: pending
-  reason: "auto-migrated from v0.1; pending close decision by zsxh1990"
-  decided_at: null
+  status: close
+  reason: "PR 已由维护者关闭（未合并），GitHub API 复核确认"
+  decided_at: "2026-07-24T09:33:50Z"
   actor: zsxh1990
-final_status: open
+final_status: closed-not-merged
 opened_at: "2026-06-28T08:13:00Z"
-last_activity: "2026-06-28T09:39:00Z"
-next_action: "等 punkpeye 授权 CI + 真实 review"
+last_activity: "2026-07-24T09:33:50Z"
+next_action: "已结案（2026-07-24 维护者关闭，未合并）"
 ---
 
 # fastmcp PR #282: feat: add testWithOllama() for local LLM testing
 
 > zsxh1990 在 [punkpeye/fastmcp#282](https://github.com/punkpeye/fastmcp/pull/282) 的 Ollama 测试 PR。  
-> **状态**：🟢 open（3 天）  
+> **状态**：⚫ closed（closed-not-merged，2026-07-24）  
 > **特殊**：首次外部贡献，等待 maintainer 授权 CI。
 
 ---

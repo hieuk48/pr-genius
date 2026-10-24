@@ -6,12 +6,11 @@ pr_number: 778
 pr_url: https://github.com/future-agi/future-agi/pull/778
 repo: future-agi/future-agi
 author: zsxh1990
-status: open
+status: closed-not-merged
 opened_at: 2026-06-04
-last_activity: 2026-06-28
+last_activity: 2026-08-02
 tags:
   - pr-case-study
-  - open
   - high-priority
   - ikalus-checkin
   - clickhouse
@@ -78,21 +77,38 @@ rounds:
     blocker: null
     resolution: "@Ikalus1988 (克莱恩主号) friendly check-in: 'I've addressed. Happy to make any adjustments.'"
     timestamp: "2026-06-28T07:25:00Z"
+  - round: 4
+    action: decision
+    delta:
+      kind: no_code_change
+      value: "PR 已关闭（未合并），无代码变更"
+      verified_at: "2026-08-02T05:41:11Z"
+      evidence_urls:
+        - https://github.com/future-agi/future-agi/pull/778
+        - https://api.github.com/repos/future-agi/future-agi/pulls/778
+      confidence: high
+    response_time_h: 0
+    maintainer_action: "maintainer closed the PR"
+    bot_review: []
+    blocker: null
+    resolution: "GitHub API 复核：state=closed, merged=false"
+    timestamp: "2026-08-02T05:41:11Z"
 close_decision:
-  status: pending
-  reason: "auto-migrated from v0.1; pending close decision by zsxh1990"
-  decided_at: null
+  status: close
+  reason: "PR 已由维护者关闭（未合并），GitHub API 复核确认"
+  decided_at: "2026-08-02T05:41:11Z"
   actor: zsxh1990
-final_status: open
+final_status: closed-not-merged
+closed_at: "2026-08-02T05:41:11Z"
 opened_at: "2026-06-04T10:55:00Z"
-last_activity: "2026-06-28T07:25:00Z"
-next_action: "7/5 前无回应 → zsxh1990 再 bump；7/12 前无回应 → 主动 close"
+last_activity: "2026-08-02T05:41:11Z"
+next_action: "已结案（2026-08-02 维护者关闭，未合并）"
 ---
 
 # future-agi PR #778: feat: enable span list view without project_id (fix #775)
 
 > zsxh1990 在 [future-agi/future-agi#778](https://github.com/future-agi/future-agi/pull/778) 的 span list PR。  
-> **状态**：🟢 open（27 天）  
+> **状态**：⚫ closed（closed-not-merged，2026-08-02）  
 > **优先级**：🔴 **最高**（克莱恩 2026-06-28 14:25 GMT+8 亲自发 friendly check-in）。
 
 ---

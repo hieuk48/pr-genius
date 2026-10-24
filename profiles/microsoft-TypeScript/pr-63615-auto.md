@@ -6,9 +6,10 @@ repo: microsoft/TypeScript
 pr_number: 63615
 pr_url: https://github.com/microsoft/TypeScript/pull/63615
 author: app/dependabot
-final_status: open
+final_status: closed-not-merged
+closed_at: '2026-07-20T00:56:11Z'
 opened_at: '2026-07-06T00:55:23Z'
-verified_at: '2026-07-19T20:30:00Z'
+verified_at: '2026-07-20T00:56:11Z'
 evidence_urls:
 - https://github.com/microsoft/TypeScript/pull/63615
 confidence: medium
@@ -31,7 +32,7 @@ rounds:
   blocker: null
   resolution: closed
   commit: null
-  timestamp: '2026-07-19T20:30:00Z'
+  timestamp: '2026-07-20T00:56:11Z'
 close_decision:
   status: close
   reason: Closed by maintainer
@@ -41,6 +42,6 @@ close_decision:
 
 # Bump the github-actions group across 1 directory with 5 upda
 
-PR #63615 by app/dependabot — open.
+PR #63615 by app/dependabot — closed-not-merged (2026-07-20).
 
 Signals: is_small_pr, is_dependency_update, has_reviews

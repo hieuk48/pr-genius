@@ -6,9 +6,10 @@ repo: microsoft/markitdown
 pr_number: 2204
 pr_url: https://github.com/microsoft/markitdown/pull/2204
 author: saitejabandaru-in
-final_status: open
+final_status: closed-not-merged
+closed_at: '2026-09-02T01:36:38Z'
 opened_at: '2026-07-10T23:33:24Z'
-verified_at: '2026-07-19T20:30:00Z'
+verified_at: '2026-09-02T01:36:38Z'
 evidence_urls:
 - https://github.com/microsoft/markitdown/pull/2204
 confidence: medium
@@ -31,7 +32,7 @@ rounds:
   blocker: null
   resolution: closed
   commit: null
-  timestamp: '2026-07-19T20:30:00Z'
+  timestamp: '2026-09-02T01:36:38Z'
 close_decision:
   status: close
   reason: Closed by maintainer
@@ -41,6 +42,6 @@ close_decision:
 
 # fix(docx): resolve math converter crash on empty runs in OMM
 
-PR #2204 by saitejabandaru-in — open.
+PR #2204 by saitejabandaru-in — closed-not-merged (2026-09-02).
 
 Signals: is_bug_fix

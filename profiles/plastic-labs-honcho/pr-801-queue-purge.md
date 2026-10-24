@@ -6,12 +6,11 @@ pr_number: 801
 pr_url: https://github.com/plastic-labs/honcho/pull/801
 repo: plastic-labs/honcho
 author: zsxh1990
-status: open
+status: closed-not-merged
 opened_at: 2026-06-12
-last_activity: 2026-06-20
+last_activity: 2026-08-07
 tags:
   - pr-case-study
-  - open
   - fastapi-trap
   - sqlalchemy-async
   - coderabbit-reviewed
@@ -97,23 +96,40 @@ rounds:
     blocker: "19 天无 maintainer 真实 review（超 profile 预估 3-7 天）"
     resolution: "friendly check-in ping (comment_id 4867501007): 'Addressed all CodeRabbit findings... Happy to make any adjustments.'"
     timestamp: "2026-07-02T15:35:03Z"
+  - round: 5
+    action: decision
+    delta:
+      kind: no_code_change
+      value: "PR 已关闭（未合并），无代码变更"
+      verified_at: "2026-08-07T18:35:12Z"
+      evidence_urls:
+        - https://github.com/plastic-labs/honcho/pull/801
+        - https://api.github.com/repos/plastic-labs/honcho/pulls/801
+      confidence: high
+    response_time_h: 0
+    maintainer_action: "maintainer closed the PR"
+    bot_review: []
+    blocker: null
+    resolution: "GitHub API 复核：state=closed, merged=false"
+    timestamp: "2026-08-07T18:35:12Z"
 close_decision:
-  status: pending
-  reason: "21 天 open, 2 check-ins, 无 maintainer 真实 review"
-  decided_at: null
+  status: close
+  reason: "PR 已由维护者关闭（未合并），GitHub API 复核确认"
+  decided_at: "2026-08-07T18:35:12Z"
   actor: zsxh1990
-final_status: open
+final_status: closed-not-merged
+closed_at: "2026-08-07T18:35:12Z"
 opened_at: "2026-06-12T01:44:47Z"
-last_activity: "2026-07-02T15:35:03Z"
+last_activity: "2026-08-07T18:35:12Z"
 stale_days: 21
-next_action: "7/9 前无回应 → bump (round 5)；7/16 前无回应 → close (round 6)"
+next_action: "已结案（2026-08-07 维护者关闭，未合并）"
 schema_version: rounds-v0.2.0
 ---
 
 # honcho PR #801: feat: add queue purge endpoint for stranded work units
 
 > zsxh1990 在 [plastic-labs/honcho#801](https://github.com/plastic-labs/honcho/pull/801) 的 queue purge PR 案例深读。  
-> **状态**：🟢 open（21 天）  
+> **状态**：⚫ closed（closed-not-merged，2026-08-07）  
 > **核心价值**：暴露了 FastAPI + SQLAlchemy 异步注入陷阱，已被 MEMORY.md §8 收录。
 
 ---

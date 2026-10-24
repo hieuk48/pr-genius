@@ -6,9 +6,9 @@ pr_number: 143
 pr_url: https://github.com/qdrant/mcp-server-qdrant/pull/143
 repo: qdrant/mcp-server-qdrant
 author: zsxh1990
-status: open-stale
+status: closed-not-merged
 opened_at: 2026-06-04
-last_activity: 2026-06-04
+last_activity: 2026-08-03
 tags:
   - pr-case-study
   - stale
@@ -76,14 +76,31 @@ rounds:
     blocker: "第二次检查仍是 28 天 total, 1 天自上次 check-in, 完全无回应"
     resolution: "bump check-in (comment_id 4867536983) 提供 3 个明确选项: rebase / add tests / close with summary"
     timestamp: "2026-07-02T15:38:44Z"
+  - round: 4
+    action: decision
+    delta:
+      kind: no_code_change
+      value: "PR 已关闭（未合并），无代码变更"
+      verified_at: "2026-08-03T03:19:55Z"
+      evidence_urls:
+        - https://github.com/qdrant/mcp-server-qdrant/pull/143
+        - https://api.github.com/repos/qdrant/mcp-server-qdrant/pulls/143
+      confidence: high
+    response_time_h: 0
+    maintainer_action: "maintainer closed the PR"
+    bot_review: []
+    blocker: null
+    resolution: "GitHub API 复核：state=closed, merged=false"
+    timestamp: "2026-08-03T03:19:55Z"
 close_decision:
-  status: pending
-  reason: "28d stale, 2 check-ins, 无 maintainer 回应，等效 Ollama PR 不存在"
-  decided_at: null
+  status: close
+  reason: "PR 已由维护者关闭（未合并），GitHub API 复核确认"
+  decided_at: "2026-08-03T03:19:55Z"
   actor: zsxh1990
-final_status: open-stale
+final_status: closed-not-merged
+closed_at: "2026-08-03T03:19:55Z"
 opened_at: "2026-06-04T03:40:24Z"
-last_activity: "2026-07-02T15:38:44Z"
+last_activity: "2026-08-03T03:19:55Z"
 stale_days: 28
 risk_notes:
   - "Qdrant 可能已合并等效实现 → 实测: #108 closed-not-merged, #111/#92 是 OpenAI-compatible, 等效 PR 不存在"
@@ -99,7 +116,7 @@ links:
 # qdrant MCP server PR #143: feat: add Ollama embedding provider for local models
 
 > zsxh1990 在 [qdrant/mcp-server-qdrant#143](https://github.com/qdrant/mcp-server-qdrant/pull/143) 的 Ollama provider PR。  
-> **状态**：🟡 open stale（**26 天无活动**）  
+> **状态**：⚫ closed（closed-not-merged，2026-08-03）  
 > **风险**：高（很可能已死）。
 
 ---

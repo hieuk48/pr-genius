@@ -6,12 +6,11 @@ pr_number: 1383
 pr_url: https://github.com/sourcebot-dev/sourcebot/pull/1383
 repo: sourcebot-dev/sourcebot
 author: zsxh1990
-status: open
+status: closed-not-merged
 opened_at: 2026-06-28
-last_activity: 2026-06-28
+last_activity: 2026-08-02
 tags:
   - pr-case-study
-  - open
   - ctags
   - observability
   - small-pr
@@ -43,21 +42,38 @@ rounds:
     bot_review:
       - "coderabbit: 1 actionable finding (未修)"
     timestamp: "2026-06-28T09:23:00Z"
+  - round: 2
+    action: decision
+    delta:
+      kind: no_code_change
+      value: "PR 已关闭（未合并），无代码变更"
+      verified_at: "2026-08-02T05:41:08Z"
+      evidence_urls:
+        - https://github.com/sourcebot-dev/sourcebot/pull/1383
+        - https://api.github.com/repos/sourcebot-dev/sourcebot/pulls/1383
+      confidence: high
+    response_time_h: 0
+    maintainer_action: "maintainer closed the PR"
+    bot_review: []
+    blocker: null
+    resolution: "GitHub API 复核：state=closed, merged=false"
+    timestamp: "2026-08-02T05:41:08Z"
 close_decision:
-  status: pending
-  reason: "auto-migrated from v0.1; pending close decision by zsxh1990"
-  decided_at: null
+  status: close
+  reason: "PR 已由维护者关闭（未合并），GitHub API 复核确认"
+  decided_at: "2026-08-02T05:41:08Z"
   actor: zsxh1990
-final_status: open
+final_status: closed-not-merged
+closed_at: "2026-08-02T05:41:08Z"
 opened_at: "2026-06-28T09:23:00Z"
-last_activity: "2026-06-28T09:23:00Z"
-next_action: "修 CodeRabbit 1 finding，等 maintainer review"
+last_activity: "2026-08-02T05:41:08Z"
+next_action: "已结案（2026-08-02 维护者关闭，未合并）"
 ---
 
 # sourcebot PR #1383: feat: detect and surface ctags indexing failures
 
 > zsxh1990 在 [sourcebot-dev/sourcebot#1383](https://github.com/sourcebot-dev/sourcebot/pull/1383) 的 ctags 失败检测 PR。  
-> **状态**：🟢 open（3 天）  
+> **状态**：⚫ closed（closed-not-merged，2026-08-02）  
 > **特征**：极小 PR（+60/-6，2 files）= 理想 size（学 OpenClaw §6.1 #2）。
 
 ---

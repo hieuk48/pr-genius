@@ -6,9 +6,9 @@ pr_number: 1309
 pr_url: https://github.com/mongodb-js/mongodb-mcp-server/pull/1309
 repo: mongodb-js/mongodb-mcp-server
 author: zsxh1990
-status: open
+status: closed-merged
 opened_at: 2026-07-02
-last_activity: 2026-07-02
+last_activity: 2026-08-04
 tags:
   - pr-case-study
   - docs
@@ -44,14 +44,32 @@ rounds:
     blocker: null
     resolution: null
     timestamp: "2026-07-02T16:13:00Z"
+  - round: 2
+    action: merge
+    delta:
+      kind: no_code_change
+      value: "PR 已关闭（已合并），无代码变更"
+      verified_at: "2026-08-04T11:19:51Z"
+      evidence_urls:
+        - https://github.com/mongodb-js/mongodb-mcp-server/pull/1309
+        - https://api.github.com/repos/mongodb-js/mongodb-mcp-server/pulls/1309
+      confidence: high
+    response_time_h: 0
+    maintainer_action: "maintainer closed the PR"
+    bot_review: []
+    blocker: null
+    resolution: "GitHub API 复核：state=closed, merged=true"
+    timestamp: "2026-08-04T11:19:51Z"
 close_decision:
-  status: pending
-  reason: "第一次 mongodb-js 仓 PR + XS docs 类，等待 maintainer 反应 baseline"
-  decided_at: null
+  status: merged
+  reason: "PR 已合并，close_decision 自然结束"
+  decided_at: "2026-08-04T11:19:51Z"
   actor: zsxh1990
-final_status: open
+final_status: closed-merged
+merged_at: "2026-08-04T11:19:51Z"
+closed_at: "2026-08-04T11:19:51Z"
 opened_at: "2026-07-02T16:13:00Z"
-last_activity: "2026-07-02T16:13:00Z"
+last_activity: "2026-08-04T11:19:51Z"
 file_change:
   files_changed: 1
   net_diff_chars: -67  # 旧 243 → 新 176
@@ -63,7 +81,7 @@ schema_version: rounds-v0.2.0
 # mongodb-mcp-server PR #1309: docs(azure): remove stale tested image version
 
 > zsxh1990 在 [mongodb-js/mongodb-mcp-server#1309](https://github.com/mongodb-js/mongodb-mcp-server/pull/1309) 的 docs 探路 PR。  
-> **状态**：🟢 open（刚开，等待 maintainer 回应 baseline）  
+> **状态**：⚫ closed（closed-merged，2026-08-04）  
 > **价值**：Ponytail "single-source-of-truth" 守则的实证 + mongodb-js 仓接受度评估入口
 
 ---

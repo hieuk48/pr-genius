@@ -4,8 +4,8 @@
   "pr_number": 8362,
   "title": "feat(langgraph): expose `trace_inputs` on `add_node`",
   "author": "ccurme",
-  "state": "OPEN",
-  "merged": false,
+  "state": "CLOSED",
+  "merged": true,
   "category": "review_approved_pending",
   "created_at": "2026-07-17T14:09:53Z",
   "signals": {
@@ -36,5 +36,7 @@
     "additions": 26,
     "deletions": 4
   },
-  "case_id": "langgraph-8362"
+  "case_id": "langgraph-8362",
+  "closed_at": "2026-07-21T19:04:05Z",
+  "merged_at": "2026-07-21T19:04:05Z"
 }
